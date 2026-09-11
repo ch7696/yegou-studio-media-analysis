@@ -50,7 +50,9 @@ def stop_visual_service() -> None:
 
 
 def ensure_visual_service() -> None:
-    run([str(ROOT / "scripts" / "run_model.sh")], timeout=600)
+    # run_model.sh waits for /health; the extra timeout covers cold-start logs
+    # on slower cloud disks before the first multimodal request is sent.
+    run([str(ROOT / "scripts" / "run_model.sh")], timeout=900)
 
 
 def run_asr(source: Path, output: Path) -> None:

@@ -8,6 +8,7 @@ import base64
 import json
 import math
 import subprocess
+import time
 from pathlib import Path
 
 import requests
@@ -42,9 +43,19 @@ def call_visual(images: list[Path], instruction: str, max_tokens: int = 3072) ->
         "max_tokens": max_tokens,
         "repetition_penalty": 1.06,
     }
-    response = requests.post(MODEL_URL, json=payload, headers={"Authorization": "Bearer x"}, timeout=600)
-    response.raise_for_status()
-    return str(response.json()["choices"][0]["message"]["content"]).strip()
+    for attempt in range(4):
+        try:
+            response = requests.post(MODEL_URL, json=payload, headers={"Authorization": "Bearer x"}, timeout=600)
+            if response.status_code in {502, 503, 504} and attempt < 3:
+                time.sleep(2 * (attempt + 1))
+                continue
+            response.raise_for_status()
+            return str(response.json()["choices"][0]["message"]["content"]).strip()
+        except requests.RequestException:
+            if attempt >= 3:
+                raise
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError("视觉模型请求未返回结果")
 
 
 def contact_prompt(start: float, end: float, frame_count: int) -> str:
