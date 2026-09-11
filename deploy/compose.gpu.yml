@@ -22,13 +22,13 @@ services:
       - --dtype
       - auto
       - --max-model-len
-      - "4096"
+      - "${MINICPM_MAX_MODEL_LEN:-32768}"
       - --gpu-memory-utilization
-      - "0.70"
+      - "${MINICPM_GPU_MEMORY_UTILIZATION:-0.90}"
       - --max-num-seqs
       - "1"
       - --limit-mm-per-prompt
-      - '{"image":1}'
+      - "{\"image\":${MINICPM_MAX_IMAGES:-8}}"
       - --enforce-eager
       - --no-enable-prefix-caching
       - --host

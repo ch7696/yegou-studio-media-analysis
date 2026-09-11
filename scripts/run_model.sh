@@ -12,6 +12,9 @@ MODEL_NAME_VALUE="${MINICPM_MODEL:-MiniCPM-V-4_5-GPTQ}"
 CONTAINER_NAME="${MINICPM_CONTAINER:-vision-minicpm}"
 PORT_VALUE="${MINICPM_PORT:-8002}"
 IMAGE_VALUE="${MINICPM_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.26.0}"
+MAX_MODEL_LEN_VALUE="${MINICPM_MAX_MODEL_LEN:-32768}"
+GPU_MEMORY_VALUE="${MINICPM_GPU_MEMORY_UTILIZATION:-0.90}"
+MAX_IMAGES_VALUE="${MINICPM_MAX_IMAGES:-8}"
 
 if [[ ! -L "$MODEL_LINK" ]]; then
   echo "请先运行：$REPO_ROOT/scripts/link_models.sh" >&2
@@ -41,10 +44,10 @@ docker run -d \
   --served-model-name "$MODEL_NAME_VALUE" \
   --trust-remote-code \
   --dtype auto \
-  --max-model-len 4096 \
-  --gpu-memory-utilization 0.70 \
+  --max-model-len "$MAX_MODEL_LEN_VALUE" \
+  --gpu-memory-utilization "$GPU_MEMORY_VALUE" \
   --max-num-seqs 1 \
-  --limit-mm-per-prompt '{"image":1}' \
+  --limit-mm-per-prompt "{\"image\":${MAX_IMAGES_VALUE}}" \
   --enforce-eager \
   --no-enable-prefix-caching \
   --host 0.0.0.0 \

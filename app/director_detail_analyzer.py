@@ -23,7 +23,7 @@ def docker_cp(source: str, destination: str) -> None:
     run(["docker", "cp", source, destination], timeout=1200)
 
 
-def call_visual(images: list[Path], instruction: str, max_tokens: int = 2400) -> str:
+def call_visual(images: list[Path], instruction: str, max_tokens: int = 3072) -> str:
     content: list[dict] = [{"type": "text", "text": instruction}]
     for image in images:
         content.append(
@@ -37,10 +37,10 @@ def call_visual(images: list[Path], instruction: str, max_tokens: int = 2400) ->
     payload = {
         "model": MODEL_NAME,
         "messages": [{"role": "user", "content": content}],
-        "temperature": 0.1,
-        "top_p": 0.8,
+        "temperature": 0.25,
+        "top_p": 0.9,
         "max_tokens": max_tokens,
-        "repetition_penalty": 1.03,
+        "repetition_penalty": 1.06,
     }
     response = requests.post(MODEL_URL, json=payload, headers={"Authorization": "Bearer x"}, timeout=600)
     response.raise_for_status()
@@ -51,20 +51,20 @@ def contact_prompt(start: float, end: float, frame_count: int) -> str:
     times = "、".join(f"第{i + 1}格={start + i:.0f}秒" for i in range(frame_count))
     return f"""你在做导演拉片，不是在写绘图提示词。这是一张 {start:.0f}–{end:.0f} 秒的 5×4 联系图，每格是一秒一帧，时间顺序从左到右、从上到下；时间依次为：{times}。
 
-请用连续的中文拉片文字，先概括这一段画面正在完成什么，再按照真正发生变化的节点分段叙述。不要逐格输出，不要 JSON，不要字段表，不要关键词堆叠。相邻画面没有变化时必须合并成一个时间段，并明确说明镜头保持了什么。
+请把所有画面当作一个连续镜头来观察，先概括这一段画面正在完成什么，再按照真正发生变化的节点分段叙述。不要逐格输出，不要 JSON，不要字段表，不要关键词堆叠。相邻画面没有变化时必须合并成一个时间段，并明确说明镜头保持了什么。最多写 4 个变化段；没有新变化就不要继续重复。
 
 每个变化段必须写清：主体在画面的哪一侧/哪一高度/前中后景，人物或物体做了什么、向哪个方向运动，背景和道具具体有什么，镜头是何种景别/机位/构图/运动，光色和画面文字有哪些，以及这一变化如何承接前后镜头。方位使用“画面左/右/上/下、左中/正中/右中、前景/中景/背景”，不要凭空编造人物身份、地点和意图。看不清就说无法确认。
 
-只输出这一段的拉片正文，每段开头写近似时间码，例如“00:06–00:11”。"""
+只输出这一段的拉片正文，每段开头写近似时间码，例如“00:06–00:11”。完成后立即结束，不要为了凑长度重复静态内容。"""
 
 
 def detail_prompt(start: float, end: float, times: list[float]) -> str:
     mapping = "、".join(f"第{i + 1}张={t:.0f}秒" for i, t in enumerate(times))
     return f"""你在做导演拉片。这是视频 {start:.0f}–{end:.0f} 秒内的 {len(times)} 张连续高清帧，按发送顺序排列，时间对应：{mapping}。
 
-请把这几张高清帧当作一个短镜头上下文来描述，不要一张图写一句重复的话。用连续中文文字说明：画面在这一小段里先是什么状态，之后具体发生了什么变化，变化发生在哪个方位；人物/动物/物体在画面左中右、上下、前中后景的准确位置；动作的方向、幅度和前后状态；背景层次、道具、可读文字、材质、光线、色彩；景别、机位、构图和镜头运动；以及这个小段在前后镜头之间的作用。
+请把这几张高清帧当作一个连续短镜头来观察，不要一张图写一句话。先判断开头和结尾的状态，只在确实发生变化的地方展开；如果连续帧没有变化，只写一次并合并时间范围。用连续中文文字说明：变化发生在哪个方位，人物/动物/物体如何移动，动作的方向、幅度和前后状态，必要时再补充背景层次、道具、可读文字、材质、光线、色彩、景别、机位、构图和镜头运动。
 
-如果多张帧之间没有新的可见变化，就合并时间范围并只说明一次“画面基本保持不变”。不要 JSON、不要字段列表、不要画面提示词式形容词，不要猜身份和地点。每个段落开头写近似时间码，例如“00:20–00:23”，只输出拉片正文。"""
+如果多张帧之间没有新的可见变化，就合并时间范围并只说明一次“画面基本保持不变”。不能用“发生了明显变化”代替具体变化，必须写清楚前后差异。不要 JSON、不要字段列表、不要画面提示词式形容词，不要猜身份和地点。每个段落开头写近似时间码，例如“00:20–00:23”，只输出拉片正文，完成后立即结束。"""
 
 
 def make_sheet(remote_frames: str, remote_sheet: str, start_sec: float, frame_count: int, columns: int, tile_w: int, tile_h: int) -> None:
@@ -181,7 +181,7 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
             make_sheet(remote_frames, context_sheet_remote, slice_start, frame_count, 5, 320, 180)
             docker_cp(f"{MODEL_CONTAINER}:{context_sheet_remote}", str(context_sheet_local))
             try:
-                context_text = call_visual([context_sheet_local], contact_prompt(slice_start, slice_end, frame_count), max_tokens=2400)
+                context_text = call_visual([context_sheet_local], contact_prompt(slice_start, slice_end, frame_count), max_tokens=4096)
             except Exception as exc:
                 context_text = f"（上下文模型调用失败：{type(exc).__name__}: {exc}）"
             context_file = text_dir / f"上下文_{slice_id:02d}_{fmt_time(slice_start).replace(':', '-')}-{fmt_time(slice_end).replace(':', '-')}.md"
@@ -207,14 +207,14 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
                 detail_file = text_dir / f"细节_{slice_id:02d}_{detail_id:02d}_{fmt_time(detail_start).replace(':', '-')}-{fmt_time(detail_end).replace(':', '-')}.md"
                 fallback_local: Path | None = None
                 try:
-                    detail_text = call_visual(selected, detail_prompt(detail_start, detail_end, times), max_tokens=2200)
+                    detail_text = call_visual(selected, detail_prompt(detail_start, detail_end, times), max_tokens=3072)
                 except Exception as first_exc:
                     fallback_remote = f"{remote_sheets}/detail_{slice_id:02d}_{detail_id:02d}.jpg"
                     fallback_local = context_dir / f"细节联系图_{slice_id:02d}_{detail_id:02d}_{fmt_time(detail_start).replace(':', '-')}-{fmt_time(detail_end).replace(':', '-')}.jpg"
                     make_sheet(remote_frames, fallback_remote, detail_start, len(selected), 3, 640, 360)
                     docker_cp(f"{MODEL_CONTAINER}:{fallback_remote}", str(fallback_local))
                     try:
-                        detail_text = call_visual([fallback_local], detail_prompt(detail_start, detail_end, times), max_tokens=2200)
+                        detail_text = call_visual([fallback_local], detail_prompt(detail_start, detail_end, times), max_tokens=3072)
                     except Exception as second_exc:
                         detail_text = f"（细节模型调用失败：{type(first_exc).__name__}: {first_exc}; fallback {type(second_exc).__name__}: {second_exc}）"
                 detail_file.write_text(detail_text + "\n", encoding="utf-8")
