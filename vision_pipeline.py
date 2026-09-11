@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-ANALYZER = ROOT / "director_detail_analyzer.py"
+ANALYZER = ROOT / "app" / "director_detail_analyzer.py"
 MODEL_NAME = os.environ.get("MINICPM_MODEL", "MiniCPM-V-4_5-GPTQ")
 
 
