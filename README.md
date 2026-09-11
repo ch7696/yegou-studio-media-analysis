@@ -1,4 +1,10 @@
-# 野构 Studio · Media Analysis Vision Studio
+# 野构 Studio · Director Timeline Lab
+
+<p align="center">
+  <img src="assets/brand/yegou-studio-logo.png" width="300" alt="野构 Studio 创意工作室标志">
+</p>
+
+<p align="center"><strong>野构 Studio · 视频导演拉片工作台</strong><br>Visual evidence · ASR timeline · Director's cut</p>
 
 野构 Studio 的视频导演拉片分析工作台。上传一个视频后，WebUI 按固定流水线生成视觉证据、ASR/时间戳和代码综合时间线；原项目 `/home/administrator/ragflow-managed` 保持不变。
 
