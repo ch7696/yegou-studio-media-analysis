@@ -13,7 +13,7 @@
   → 下载四份主文档和原始机器文件
 ```
 
-ASR 和视觉服务按顺序使用 GPU；同一个 WebUI 进程内的多个任务会排队，避免任务之间互相停止或重启 VLM 容器。页面会实时显示阶段、百分比、日志，以及 `nvidia-smi` 的 GPU 利用率、显存、温度和功耗。
+ASR 和视觉服务按顺序使用 GPU；同一个 WebUI 进程内的多个任务会排队，避免任务之间互相停止或重启 VLM 容器。默认在任务完成或异常后停止视觉容器并释放显存；WebUI 可以取消这个选项以保留热模型。页面会实时显示阶段、百分比、日志，以及 `nvidia-smi` 的 GPU 利用率、显存、温度和功耗。
 
 ## 四份主文档
 
@@ -37,7 +37,7 @@ cp .env.example .env
 ./scripts/run_webui.sh
 ```
 
-默认打开 <http://localhost:7877>。`.env` 可调整输出目录、WebUI 端口、模型路径、ASR 镜像、`MINICPM_MAX_MODEL_LEN`（默认 `32768`）、GPU 显存比例和每次请求的最大图片数。
+默认打开 <http://localhost:7877>。`.env` 可调整输出目录、WebUI 端口、模型路径、ASR 镜像、`MINICPM_MAX_MODEL_LEN`（默认 `32768`）、GPU 显存比例、每次请求的最大图片数和 `RELEASE_GPU_AFTER_JOB`。
 
 模型目录由 `MODEL_ROOT` 提供，至少需要：
 

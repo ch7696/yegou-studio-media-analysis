@@ -229,6 +229,11 @@ HTML = """<!doctype html>
     .range-grid label { margin: 0; color: #9aabc7; font-size: 13px; }
     .range-grid input { width: 100%; padding: 11px 12px; margin-top: 8px; border: 1px solid #2d4268; border-radius: 10px; outline: none; background: #0b1528; color: var(--ink); font-size: 14px; transition: border .2s, box-shadow .2s; }
     .range-grid input:focus { border-color: #7393f6; box-shadow: 0 0 0 4px #3568f233; }
+    .release-option { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; padding: 12px 13px; border: 1px solid #263b60; border-radius: 12px; background: #0e1a30; cursor: pointer; }
+    .release-option input { width: 16px; height: 16px; flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--blue); }
+    .release-option strong, .release-option small { display: block; }
+    .release-option strong { font-size: 12px; }
+    .release-option small { margin-top: 4px; color: #8293b0; font-size: 11px; line-height: 1.5; }
     button { width: 100%; margin-top: 18px; border: 0; border-radius: 11px; padding: 13px 20px; background: linear-gradient(135deg, var(--blue), #5a55e8); color: white; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 18px #3568f233; transition: transform .2s, box-shadow .2s, opacity .2s; }
     button:hover { transform: translateY(-1px); box-shadow: 0 11px 22px #3568f33d; }
     button:disabled { background: #34415c; color: #93a1b9; box-shadow: none; cursor: wait; transform: none; }
@@ -362,6 +367,8 @@ HTML = """<!doctype html>
     .range-grid label { color: #58778e; }
     .range-grid input { border-color: #cfe2ec; background: #fbfdff; color: #234761; }
     .range-grid input:focus { border-color: #70afd0; box-shadow: 0 0 0 4px #3988c21c; }
+    .release-option { border-color: #d6e7ef; background: #f8fcfe; }
+    .release-option small { color: #7891a3; }
     button { background: linear-gradient(135deg, #3988c2, #5c9ed0); color: #fff; box-shadow: 0 8px 18px #3988c233; }
     button:hover { box-shadow: 0 11px 22px #3988c23d; }
     button:disabled { background: #b5cbd7; color: #edf7fb; }
@@ -488,6 +495,10 @@ HTML = """<!doctype html>
           </label>
         </div>
         <p class="small">例如填写 20 和 40，只分析原视频的 00:20–00:40。截取片段内的报告时间码从 00:00 重新计时，任务信息中会保留原视频区间。</p>
+        <label class="release-option" for="release-gpu">
+          <input id="release-gpu" type="checkbox" checked>
+          <span><strong>分析完成后释放显存</strong><small>默认停止 MiniCPM-V 容器，释放 GPU；取消勾选可保留热模型以加快下一次任务。</small></span>
+        </label>
         <button id="start" type="submit">开始分析</button>
       </form>
       <p class="small">开始秒留空按 0 处理，结束秒留空按视频结尾处理。长视频会分批执行，页面显示的是阶段级大概进度。</p>
@@ -607,6 +618,7 @@ HTML = """<!doctype html>
     const errorBox = document.getElementById("error");
     const startSec = document.getElementById("start-sec");
     const endSec = document.getElementById("end-sec");
+    const releaseGpu = document.getElementById("release-gpu");
     const dropZone = document.getElementById("drop-zone");
     const fileName = document.getElementById("file-name");
     const previewPanel = document.getElementById("preview-panel");
@@ -921,6 +933,7 @@ HTML = """<!doctype html>
         const query = new URLSearchParams();
         if (startSec.value.trim()) query.set("start_sec", startSec.value.trim());
         if (endSec.value.trim()) query.set("end_sec", endSec.value.trim());
+        query.set("release_gpu", releaseGpu.checked ? "1" : "0");
         const target = "/api/jobs" + (query.toString() ? "?" + query.toString() : "");
         const response = await fetch(target, { method: "POST", body: body });
         const job = await response.json();
@@ -1046,6 +1059,10 @@ def update_progress_from_line(job_id: str, line: str) -> None:
         add_log(job_id, line, min(86, current + 2), "视觉分析：20 秒批次")
     elif "高清逐秒/20秒上下文分析完成" in line:
         add_log(job_id, line, 88, "视觉分析完成")
+    elif "释放 GPU 显存" in line:
+        add_log(job_id, line, 100, "释放 GPU 显存")
+    elif "GPU 显存已释放" in line:
+        add_log(job_id, line, 100, "GPU 显存已释放")
     elif "阶段 3/3" in line:
         add_log(job_id, line, 90, "生成四份文档")
     elif "已生成：" in line:
@@ -1115,12 +1132,13 @@ def run_job(
     output: Path,
     start_sec: float,
     end_sec: float | None,
+    release_gpu_after: bool,
 ) -> None:
     if ANALYSIS_LOCK.locked():
         add_log(job_id, "已有任务占用 GPU，当前任务进入队列。", 0, "排队等待 GPU")
     with ANALYSIS_LOCK:
         add_log(job_id, "已获得 GPU 分析资源，按计划开始执行。", 1, "准备中")
-        _run_job(job_id, source, original, output, start_sec, end_sec)
+        _run_job(job_id, source, original, output, start_sec, end_sec, release_gpu_after)
 
 
 def _run_job(
@@ -1130,6 +1148,7 @@ def _run_job(
     output: Path,
     start_sec: float,
     end_sec: float | None,
+    release_gpu_after: bool,
 ) -> None:
     add_log(job_id, "任务已创建，准备调用固定分析流程。", 1, "准备中")
     try:
@@ -1167,6 +1186,7 @@ def _run_job(
                     f"- 原始上传路径：{source}",
                     f"- 分析起始秒：{start_sec:.3f}",
                     f"- 分析结束秒：{end_label}",
+                    f"- 分析完成后释放显存：{'是' if release_gpu_after else '否'}",
                     "- 输出时间码口径：以本次分析片段为 00:00 起点；原始视频区间保留在本文件。",
                     "",
                 ]
@@ -1185,6 +1205,7 @@ def _run_job(
         "--output",
         str(output),
     ]
+    command.append("--release-gpu-after" if release_gpu_after else "--keep-gpu-after")
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     try:
@@ -1347,7 +1368,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes(
                 data,
                 content_type,
-                disposition=f'attachment; filename="{target.name}"',
+                disposition=f"attachment; filename*=UTF-8''{quote(target.name)}",
             )
             return
         self.send_json({"error": "Not Found"}, 404)
@@ -1363,8 +1384,10 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             raw_start = query.get("start_sec", [""])[0].strip()
             raw_end = query.get("end_sec", [""])[0].strip()
+            raw_release = query.get("release_gpu", ["1"])[0].strip().lower()
             start_sec = float(raw_start) if raw_start else 0.0
             end_sec = float(raw_end) if raw_end else None
+            release_gpu_after = raw_release not in {"0", "false", "no", "off"}
             if not math.isfinite(start_sec) or start_sec < 0:
                 raise ValueError("开始秒必须是大于等于 0 的数字")
             if end_sec is not None and (not math.isfinite(end_sec) or end_sec <= start_sec):
@@ -1389,6 +1412,7 @@ class Handler(BaseHTTPRequestHandler):
                 "logs": [],
                 "start_sec": start_sec,
                 "end_sec": end_sec,
+                "release_gpu_after": release_gpu_after,
                 "created_at": datetime.now().isoformat(timespec="seconds"),
                 "files": [],
             }
@@ -1397,7 +1421,7 @@ class Handler(BaseHTTPRequestHandler):
                 save_job_state(job)
             thread = threading.Thread(
                 target=run_job,
-                args=(job_id, target, original, output, start_sec, end_sec),
+                args=(job_id, target, original, output, start_sec, end_sec, release_gpu_after),
                 daemon=True,
             )
             with JOBS_LOCK:

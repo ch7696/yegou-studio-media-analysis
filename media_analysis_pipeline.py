@@ -30,6 +30,12 @@ MINICPM_CONTAINER = os.environ.get("MINICPM_CONTAINER", "vision-minicpm")
 ASR_CONTAINER = os.environ.get("ASR_CONTAINER", "vision-asr")
 ASR_MAX_NEW_TOKENS = os.environ.get("ASR_MAX_NEW_TOKENS", "2048")
 ASR_LANGUAGE = os.environ.get("ASR_LANGUAGE", "").strip()
+RELEASE_GPU_AFTER_JOB = os.environ.get("RELEASE_GPU_AFTER_JOB", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 
 def run(command: list[str], *, check: bool = True, timeout: int | None = None) -> subprocess.CompletedProcess[str]:
@@ -47,6 +53,12 @@ def stop_visual_service() -> None:
         capture_output=True,
         check=False,
     )
+
+
+def release_visual_service() -> None:
+    print("分析结束：正在停止视觉模型容器并释放 GPU 显存", flush=True)
+    stop_visual_service()
+    print("视觉模型容器已停止，GPU 显存已释放", flush=True)
 
 
 def ensure_visual_service() -> None:
@@ -493,6 +505,19 @@ def main() -> None:
     parser.add_argument("--skip-visual", action="store_true")
     parser.add_argument("--package-only", action="store_true", help="只根据已有视觉/ASR产物生成四份文档")
     parser.add_argument("--final-source", type=Path, help="已有的 Codex/人工最终分析稿")
+    parser.add_argument(
+        "--release-gpu-after",
+        dest="release_gpu_after",
+        action="store_true",
+        help="分析完成或异常后停止视觉容器并释放显存",
+    )
+    parser.add_argument(
+        "--keep-gpu-after",
+        dest="release_gpu_after",
+        action="store_false",
+        help="分析完成后保留视觉容器热运行",
+    )
+    parser.set_defaults(release_gpu_after=None)
     args = parser.parse_args()
 
     source = args.source.resolve()
@@ -501,20 +526,26 @@ def main() -> None:
         raise SystemExit(f"视频不存在：{source}")
     output.mkdir(parents=True, exist_ok=True)
 
-    if not args.package_only:
-        if not args.skip_asr:
-            print("阶段 1/3：ASR + ForcedAligner", flush=True)
-            run_asr(source, output)
-            print("阶段 1/3 完成：ASR + ForcedAligner", flush=True)
-        if not args.skip_visual:
-            print("阶段 2/3：逐秒高清帧 + 20秒视觉上下文", flush=True)
-            run_visual(source, output, args.max_duration)
-            print("阶段 2/3 完成：视觉拉片", flush=True)
+    release_gpu_after = RELEASE_GPU_AFTER_JOB if args.release_gpu_after is None else args.release_gpu_after
+    visual_stage_requested = not args.package_only and not args.skip_visual
+    try:
+        if not args.package_only:
+            if not args.skip_asr:
+                print("阶段 1/3：ASR + ForcedAligner", flush=True)
+                run_asr(source, output)
+                print("阶段 1/3 完成：ASR + ForcedAligner", flush=True)
+            if not args.skip_visual:
+                print("阶段 2/3：逐秒高清帧 + 20秒视觉上下文", flush=True)
+                run_visual(source, output, args.max_duration)
+                print("阶段 2/3 完成：视觉拉片", flush=True)
 
-    print("阶段 3/3：生成四份文档", flush=True)
-    paths = package_documents(output, source, args.final_source.resolve() if args.final_source else None)
-    for path in paths:
-        print(f"已生成：{path}", flush=True)
+        print("阶段 3/3：生成四份文档", flush=True)
+        paths = package_documents(output, source, args.final_source.resolve() if args.final_source else None)
+        for path in paths:
+            print(f"已生成：{path}", flush=True)
+    finally:
+        if release_gpu_after and visual_stage_requested:
+            release_visual_service()
 
 
 if __name__ == "__main__":
