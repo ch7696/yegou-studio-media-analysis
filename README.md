@@ -4,36 +4,36 @@
   <img src="assets/brand/yegou-studio-logo.png" width="260" alt="野构 Studio 创意工作室标志">
 </p>
 
-<p align="center"><strong>视频导演拉片分析工作台</strong><br>面向视频创作、研究与内容生产的视觉与声音时间线分析工具。</p>
+<p align="center"><strong>视频导演拉片分析工作台</strong><br>把视频拆成画面、声音和时间线，方便回看、复盘与继续创作。</p>
 
 ## 项目简介
 
-本项目用于对视频进行视觉镜头分析、语音识别、强制对齐与时间线整合，生成可复核、可下载的导演拉片资料。系统提供 WebUI 操作界面，支持视频上传、区间截取、任务进度与 GPU 状态查看。
+这是野构 Studio 用来做视频导演拉片的工作台。上传视频后，系统会分别分析画面和声音，再把它们合成一条完整时间线，最后输出一套方便回看、复盘和继续创作的资料。WebUI 支持视频上传、区间截取、任务进度和 GPU 状态查看。
 
 ## 核心能力
 
-- 按秒提取高清视频帧，并以连续时间上下文进行视觉分析。
-- 使用 ASR 与 ForcedAligner 生成带时间戳的语音文本。
-- 合并视觉信息与语音时间线，形成统一的镜头分析记录。
-- 输出 Markdown、JSONL、SRT、VTT 及逐帧图像等复核资料。
-- 支持任务进度、运行日志、GPU 状态与分析完成后的显存释放。
+- 每秒提取一张高清视频帧，并结合连续时间上下文分析镜头。
+- 用 ASR 和 ForcedAligner 把语音整理成带时间戳的文本。
+- 将画面变化、语音内容和时间码合并成一条可回看的分析时间线。
+- 同时保留 Markdown、JSONL、SRT、VTT、逐帧图像和联系图等资料。
+- 页面会显示任务进度、运行日志和 GPU 状态，任务结束后也可以释放显存。
 
 ## 分析输出
 
-每个任务生成以下主要文档：
+每个任务会生成四份主要文档：
 
 | 文件 | 内容 |
 | --- | --- |
-| `01_纯视觉分析.md` | 视觉模型生成的时间线分析 |
-| `02_纯ASR与时间戳.md` | 语音识别、分段文本与时间戳 |
-| `03_代码综合时间线.md` | 视觉信息与语音时间线的程序化合并结果 |
-| `04_最终导演分析.md` | 面向后续创作与研究的综合分析文档 |
+| `01_纯视觉分析.md` | 只看画面的镜头时间线 |
+| `02_纯ASR与时间戳.md` | 语音转写、分段文本和时间戳 |
+| `03_代码综合时间线.md` | 画面与声音合并后的完整时间线 |
+| `04_最终导演分析.md` | 用于继续整理和深化的导演分析稿 |
 
-任务目录同时保留原始帧、联系图、索引文件及 ASR 中间结果，便于复核和二次处理。
+原始帧、联系图、索引文件和 ASR 中间结果也会一并保留，方便随时回看和二次处理。
 
 ## 使用方式
 
-运行环境需要 Docker、NVIDIA Container Toolkit 及本地模型文件。首次使用时执行：
+准备好 Docker、NVIDIA Container Toolkit 和模型文件后，执行：
 
 ```bash
 cp .env.example .env
@@ -42,7 +42,7 @@ cp .env.example .env
 ./scripts/run_webui.sh
 ```
 
-启动后访问 <http://localhost:7877>。模型目录由 `MODEL_ROOT` 配置，目录结构如下：
+启动后打开 <http://localhost:7877>。模型目录通过 `MODEL_ROOT` 配置，结构如下：
 
 ```text
 ${MODEL_ROOT}/MiniCPM-V-4_5-GPTQ
@@ -50,7 +50,7 @@ ${MODEL_ROOT}/Qwen3-ASR-0.6B
 ${MODEL_ROOT}/Qwen3-ForcedAligner-0.6B
 ```
 
-也可以直接运行完整流水线：
+不需要打开 WebUI 时，也可以直接运行流水线：
 
 ```bash
 python3 media_analysis_pipeline.py \
@@ -58,7 +58,7 @@ python3 media_analysis_pipeline.py \
   --output /path/to/output
 ```
 
-使用 `--max-duration 60` 可限制分析时长；使用 `--package-only` 可基于已有产物重新生成文档。
+加上 `--max-duration 60` 可以只分析前 60 秒；已有产物时，可以用 `--package-only` 重新整理文档。
 
 ## 项目结构
 
