@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
 PIPELINE = REPO_ROOT / "media_analysis_pipeline.py"
+ASSET_ROOT = REPO_ROOT / "assets"
 WEBUI_STATE = Path(os.environ.get("WEBUI_STATE", str(REPO_ROOT / "state")))
 UPLOAD_DIR = WEBUI_STATE / "uploads"
 JOB_STATE_DIR = WEBUI_STATE / "jobs"
@@ -134,7 +135,7 @@ HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>视频导演拉片分析</title>
+  <title>野构 Studio · 视频导演拉片工作台</title>
   <style>
     :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --ink: #edf3ff; --muted: #91a1bd; --line: #273755; --blue: #6f96ff; --blue-dark: #4d72e8; --cyan: #62e3ff; --soft: #111d34; --panel: rgba(15, 25, 46, .86); }
     * { box-sizing: border-box; }
@@ -146,6 +147,10 @@ HTML = """<!doctype html>
     .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--cyan); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
     .eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #47c58a; box-shadow: 0 0 0 4px #47c58a22; }
     .hero-row { display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 12px; }
+    .brand-lockup { display: flex; align-items: center; gap: 20px; min-width: 0; }
+    .brand-logo { display: block; width: 132px; height: 132px; flex: 0 0 auto; object-fit: contain; border: 1px solid #d5e6ef; border-radius: 25px; background: #fff; box-shadow: 0 14px 30px #4d83a51c, 0 0 0 7px #ffffffb8; mix-blend-mode: multiply; }
+    .brand-copy { min-width: 0; }
+    .brand-name { margin-bottom: 8px; color: #3b86b6; font: 800 12px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; }
     .hero-tools { display: flex; align-items: center; gap: 12px; }
     .hero-stage { position: relative; width: 176px; height: 112px; flex: 0 0 auto; perspective: 700px; }
     .stage-halo { position: absolute; top: 50%; left: 50%; width: 84px; height: 84px; border-radius: 50%; background: #5f8bff22; filter: blur(18px); transform: translate(-50%, -50%); animation: halo-breathe 5s ease-in-out infinite; }
@@ -308,7 +313,7 @@ HTML = """<!doctype html>
     .studio-footer span:last-child { color: #7387aa; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
     @media (max-width: 920px) { .studio-grid { grid-template-columns: 1fr; } .studio-sidebar { position: static; grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 720px) { main { width: min(100% - 24px, 1240px); padding-top: 26px; } .hero-row { align-items: flex-start; flex-direction: column; } .hero-stage { align-self: center; margin-top: -8px; } .flow { grid-template-columns: 1fr 1fr; } .preview-top, .timeline-actions { align-items: flex-start; flex-direction: column; } .preview-meta { justify-content: flex-start; } .quick-actions { flex-wrap: wrap; } .studio-sidebar { grid-template-columns: 1fr; } .run-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); } .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 720px) { main { width: min(100% - 24px, 1240px); padding-top: 26px; } .hero-row { align-items: flex-start; flex-direction: column; } .brand-lockup { align-items: flex-start; gap: 14px; } .brand-logo { width: 96px; height: 96px; border-radius: 19px; } .hero-stage { align-self: center; margin-top: -8px; } .flow { grid-template-columns: 1fr 1fr; } .preview-top, .timeline-actions { align-items: flex-start; flex-direction: column; } .preview-meta { justify-content: flex-start; } .quick-actions { flex-wrap: wrap; } .studio-sidebar { grid-template-columns: 1fr; } .run-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); } .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 480px) { main { width: min(100% - 20px, 980px); } .card { padding: 17px; border-radius: 15px; } .range-grid, .flow, .run-plan, .telemetry-grid { grid-template-columns: 1fr; } .local-pill { align-self: flex-start; } }
 
     /* Minimal geometric light theme */
@@ -331,6 +336,8 @@ HTML = """<!doctype html>
     .hero-stage { display: none; }
     .eyebrow { color: #3b86b6; }
     .eyebrow::before { background: #55c7a1; box-shadow: 0 0 0 4px #55c7a122; }
+    .brand-logo { border-color: #d5e6ef; box-shadow: 0 14px 30px #4d83a51c, 0 0 0 7px #ffffffb8; }
+    .brand-name { color: #3b86b6; }
     .title-mark { color: #3b9bc1; }
     .hint { color: #718aa0; }
     .local-pill, .tag { border-color: #d3e5ef; background: #ffffffc9; color: #608098; box-shadow: 0 4px 15px #5d96b312; }
@@ -426,11 +433,15 @@ HTML = """<!doctype html>
   </div>
   <main>
     <header class="hero">
-      <div class="eyebrow">LOCAL MEDIA WORKBENCH · V1</div>
+      <div class="eyebrow">野构 STUDIO · LOCAL MEDIA WORKBENCH</div>
       <div class="hero-row">
-        <div>
-          <h1>视频导演拉片分析 <span class="title-mark">STUDIO</span></h1>
-          <p class="hint">把视频交给本地模型，得到可回看、可下载、可继续加工的视觉与声音时间线。</p>
+        <div class="brand-lockup">
+          <img class="brand-logo" src="/assets/brand/yegou-studio-logo.png" alt="野构 Studio 创意标志">
+          <div class="brand-copy">
+            <div class="brand-name">野构 Studio</div>
+            <h1>视频导演拉片工作台 <span class="title-mark">MEDIA LAB</span></h1>
+            <p class="hint">把视频交给野构 Studio，得到可回看、可下载、可继续加工的视觉与声音时间线。</p>
+          </div>
         </div>
         <div class="hero-tools">
           <div class="local-pill"><span></span>本地运行 · 不上传云端</div>
@@ -590,7 +601,7 @@ HTML = """<!doctype html>
       <ul id="files"></ul>
       <p id="error" class="error"></p>
     </section>
-    <div class="studio-footer"><span>MEDIA ANALYSIS STUDIO · LOCAL PIPELINE</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
+    <div class="studio-footer"><span>野构 STUDIO · MEDIA ANALYSIS LAB</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
   </main>
   <script>
     const form = document.getElementById("upload-form");
@@ -1326,6 +1337,13 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self.send_bytes(HTML.encode("utf-8"), "text/html; charset=utf-8")
+            return
+        if parsed.path == "/assets/brand/yegou-studio-logo.png":
+            logo = ASSET_ROOT / "brand" / "yegou-studio-logo.png"
+            if not logo.is_file():
+                self.send_json({"error": "品牌 logo 不存在"}, 404)
+                return
+            self.send_bytes(logo.read_bytes(), "image/png")
             return
         match = re.fullmatch(r"/api/jobs/([^/]+)", parsed.path)
         if match:

@@ -38,3 +38,8 @@ models/*
 Thumbs.db
 .idea/
 .vscode/
+
+# Brand assets are intentional source files, not generated media
+!assets/
+!assets/brand/
+!assets/brand/*.png

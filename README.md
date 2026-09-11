@@ -1,6 +1,6 @@
-# Media Analysis Vision Studio
+# 野构 Studio · Media Analysis Vision Studio
 
-一个独立的视频导演拉片分析工作台。上传一个视频后，WebUI 按固定流水线生成视觉证据、ASR/时间戳和代码综合时间线；原项目 `/home/administrator/ragflow-managed` 保持不变。
+野构 Studio 的视频导演拉片分析工作台。上传一个视频后，WebUI 按固定流水线生成视觉证据、ASR/时间戳和代码综合时间线；原项目 `/home/administrator/ragflow-managed` 保持不变。
 
 ## 固定工作流
 
@@ -48,6 +48,10 @@ ${MODEL_ROOT}/Qwen3-ForcedAligner-0.6B
 ```
 
 `scripts/link_models.sh` 只在新仓库的 `models/` 下创建软链接，不复制模型权重；模型权重不会提交 Git。
+
+## 许可证与品牌素材
+
+本项目源代码采用 [Apache License 2.0](LICENSE)。野构 Studio logo 位于 `assets/brand/yegou-studio-logo.png`，品牌标识和相关素材不随 Apache-2.0 授权，详见 [NOTICE](NOTICE)。
 
 ## 直接运行固定流水线
 
