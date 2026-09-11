@@ -443,7 +443,7 @@ def write_final_document(output: Path, source: Path, final_source: Path | None) 
             "# 04_最终导演分析",
             "",
             f"来源视频：{source.name}",
-            "处理方式：在前三份机器产物基础上，由 Codex/人工进行导演拉片、叙事和视觉语法分析。",
+            "处理方式：基于前三份机器产物进行导演拉片、叙事和视觉语法分析。",
             "",
             body,
             "",
@@ -455,7 +455,7 @@ def write_final_document(output: Path, source: Path, final_source: Path | None) 
             f"来源视频：{source.name}",
             "状态：待人工或大模型处理。",
             "",
-            "本文件是最终解释层，不参与前三份机器产物的生成。用户可以下载 01_纯视觉分析.md、02_纯ASR与时间戳.md 和 03_代码综合时间线.md，交给 Codex、其他大模型或人工继续处理。",
+            "本文件是最终解释层，不参与前三份机器产物的生成。可结合前三份文档完成导演拉片、叙事与视觉语法分析。",
             "",
             "建议最终分析重点：镜头切换、构图方位、主体动作、动作变化、旁白与画面的关系、剪辑节奏、叙事推进、视觉母题和不确定项。",
             "",
@@ -504,7 +504,7 @@ def main() -> None:
     parser.add_argument("--skip-asr", action="store_true")
     parser.add_argument("--skip-visual", action="store_true")
     parser.add_argument("--package-only", action="store_true", help="只根据已有视觉/ASR产物生成四份文档")
-    parser.add_argument("--final-source", type=Path, help="已有的 Codex/人工最终分析稿")
+    parser.add_argument("--final-source", type=Path, help="已有的最终分析稿")
     parser.add_argument(
         "--release-gpu-after",
         dest="release_gpu_after",

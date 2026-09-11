@@ -1,40 +1,39 @@
-# 野构 Studio · Director Timeline Lab
+# 野构 Studio · 视频导演拉片分析工作台
 
 <p align="center">
-  <img src="assets/brand/yegou-studio-logo.png" width="300" alt="野构 Studio 创意工作室标志">
+  <img src="assets/brand/yegou-studio-logo.png" width="260" alt="野构 Studio 创意工作室标志">
 </p>
 
-<p align="center"><strong>野构 Studio · 视频导演拉片工作台</strong><br>Visual evidence · ASR timeline · Director's cut</p>
+<p align="center"><strong>视频导演拉片分析工作台</strong><br>面向视频创作、研究与内容生产的视觉与声音时间线分析工具。</p>
 
-野构 Studio 的视频导演拉片分析工作台。上传一个视频后，WebUI 按固定流水线生成视觉证据、ASR/时间戳和代码综合时间线；原项目 `/home/administrator/ragflow-managed` 保持不变。
+## 项目简介
 
-## 固定工作流
+本项目用于对视频进行视觉镜头分析、语音识别、强制对齐与时间线整合，生成可复核、可下载的导演拉片资料。系统提供 WebUI 操作界面，支持视频上传、区间截取、任务进度与 GPU 状态查看。
 
-```text
-上传视频
-  → 可选截取（开始秒 / 结束秒）
-  → 阶段 1：Qwen3-ASR + Qwen3-ForcedAligner
-  → 阶段 2：MiniCPM-V（1 秒 1 帧、20 秒上下文、5 秒细节组）
-  → 阶段 3：代码按时间区间合并视觉与语音
-  → 下载四份主文档和原始机器文件
-```
+## 核心能力
 
-ASR 和视觉服务按顺序使用 GPU；同一个 WebUI 进程内的多个任务会排队，避免任务之间互相停止或重启 VLM 容器。默认在任务完成或异常后停止视觉容器并释放显存；WebUI 可以取消这个选项以保留热模型。页面会实时显示阶段、百分比、日志，以及 `nvidia-smi` 的 GPU 利用率、显存、温度和功耗。
+- 按秒提取高清视频帧，并以连续时间上下文进行视觉分析。
+- 使用 ASR 与 ForcedAligner 生成带时间戳的语音文本。
+- 合并视觉信息与语音时间线，形成统一的镜头分析记录。
+- 输出 Markdown、JSONL、SRT、VTT 及逐帧图像等复核资料。
+- 支持任务进度、运行日志、GPU 状态与分析完成后的显存释放。
 
-## 四份主文档
+## 分析输出
 
-每个任务目录默认位于 `C:\Users\Administrator\Desktop\media_analysis`（WSL 路径：`/mnt/c/Users/Administrator/Desktop/media_analysis`），包含：
+每个任务生成以下主要文档：
 
-- `01_纯视觉分析.md`：只包含视觉模型的导演拉片文字。
-- `02_纯ASR与时间戳.md`：完整转写、分段时间码和模型信息。
-- `03_代码综合时间线.md`：代码将 20 秒视觉区间、其中的 5 秒高清细节段与 ForcedAligner 语音区间按相交时间合并，不让模型篡改原文。
-- `04_最终导演分析.md`：最终解释层模板；可以下载前三份交给 Codex、其他大模型或人工继续完成。
+| 文件 | 内容 |
+| --- | --- |
+| `01_纯视觉分析.md` | 视觉模型生成的时间线分析 |
+| `02_纯ASR与时间戳.md` | 语音识别、分段文本与时间戳 |
+| `03_代码综合时间线.md` | 视觉信息与语音时间线的程序化合并结果 |
+| `04_最终导演分析.md` | 面向后续创作与研究的综合分析文档 |
 
-同时保留 `视觉分析文本汇总.md`、`视觉片段索引.jsonl`、逐秒高清帧、20 秒联系图、ASR JSON/SRT/VTT/Markdown、`audio_records.jsonl` 和 `分析清单.json`，便于复核和二次加工。无音频的视频也会生成四份文档，并在 ASR 文档中明确标记“未识别到语音”。
+任务目录同时保留原始帧、联系图、索引文件及 ASR 中间结果，便于复核和二次处理。
 
-## 本地启动
+## 使用方式
 
-先确认 Docker、NVIDIA Container Toolkit 和模型目录可用，然后建立软链接：
+运行环境需要 Docker、NVIDIA Container Toolkit 及本地模型文件。首次使用时执行：
 
 ```bash
 cp .env.example .env
@@ -43,9 +42,7 @@ cp .env.example .env
 ./scripts/run_webui.sh
 ```
 
-默认打开 <http://localhost:7877>。`.env` 可调整输出目录、WebUI 端口、模型路径、ASR 镜像、`MINICPM_MAX_MODEL_LEN`（默认 `32768`）、GPU 显存比例、每次请求的最大图片数和 `RELEASE_GPU_AFTER_JOB`。
-
-模型目录由 `MODEL_ROOT` 提供，至少需要：
+启动后访问 <http://localhost:7877>。模型目录由 `MODEL_ROOT` 配置，目录结构如下：
 
 ```text
 ${MODEL_ROOT}/MiniCPM-V-4_5-GPTQ
@@ -53,15 +50,7 @@ ${MODEL_ROOT}/Qwen3-ASR-0.6B
 ${MODEL_ROOT}/Qwen3-ForcedAligner-0.6B
 ```
 
-`scripts/link_models.sh` 只在新仓库的 `models/` 下创建软链接，不复制模型权重；模型权重不会提交 Git。
-
-## 许可证与品牌素材
-
-本项目源代码采用 [Apache License 2.0](LICENSE)。野构 Studio logo 位于 `assets/brand/yegou-studio-logo.png`，品牌标识和相关素材不随 Apache-2.0 授权，详见 [NOTICE](NOTICE)。
-
-## 直接运行固定流水线
-
-WebUI 调用的是仓库根目录的 `media_analysis_pipeline.py`。也可以直接运行：
+也可以直接运行完整流水线：
 
 ```bash
 python3 media_analysis_pipeline.py \
@@ -69,34 +58,19 @@ python3 media_analysis_pipeline.py \
   --output /path/to/output
 ```
 
-只处理前 60 秒：
+使用 `--max-duration 60` 可限制分析时长；使用 `--package-only` 可基于已有产物重新生成文档。
 
-```bash
-python3 media_analysis_pipeline.py \
-  --source /path/to/video.mp4 \
-  --output /path/to/output \
-  --max-duration 60
-```
-
-已有视觉和 ASR 产物时，可用 `--package-only` 重新生成四份文档；已有最终稿可通过 `--final-source /path/to/final.md` 写入第四份文档。
-
-## 云端部署方向
-
-`deploy/compose.gpu.yml` 提供 MiniCPM-V 的 GPU 服务骨架，默认使用 32k 上下文、单序列和每请求最多 8 张图片，适合 4090/5090 + 96GB RAM 环境。WebUI 目前建议与 Docker 宿主机同节点运行，因为流水线需要按任务启动 ASR worker、切片容器并访问共享模型软链接；`deploy/Dockerfile.web` 已包含完整 Python 流水线文件，后续如把 WebUI 容器化，需要额外挂载 Docker socket、模型卷、输入卷、输出卷，并把 `MODEL_ROOT` 改成容器可见路径。
-
-## 目录说明
+## 项目结构
 
 ```text
-app/
-  media_analysis_webui.py       WebUI、上传、时间轴、日志、进度和 GPU 监控
-  director_detail_analyzer.py   1fps/20秒/5秒视觉分析
-  vision_core.py                MiniCPM-V API 和视频工具
-media_analysis_pipeline.py      ASR → 视觉 → 四文档打包总控
-audio_timeline.py               Qwen3-ASR + ForcedAligner worker
-asset_naming.py                 音频产物命名工具
-scripts/
-  link_models.sh                创建模型软链接
-  run_model.sh                  启动 MiniCPM-V
-  run_webui.sh                  启动 WebUI
-deploy/                         GPU compose 和 WebUI 镜像骨架
+app/                         WebUI 与视觉分析模块
+media_analysis_pipeline.py   分析流程总控
+audio_timeline.py            ASR 与 ForcedAligner 流程
+scripts/                     模型链接与服务启动脚本
+deploy/                      GPU 部署配置
+assets/brand/                野构 Studio 品牌素材
 ```
+
+## 许可证与品牌
+
+本项目源代码采用 [Apache License 2.0](LICENSE)。`assets/brand/` 中的野构 Studio 标识、Logo 及相关品牌素材不随 Apache-2.0 授权，具体说明见 [NOTICE](NOTICE)。

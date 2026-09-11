@@ -7,7 +7,7 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
   source "$REPO_ROOT/.env"
   set +a
 fi
-MODEL_ROOT_VALUE="${MODEL_ROOT:-/home/administrator/models}"
+MODEL_ROOT_VALUE="${MODEL_ROOT:-${REPO_ROOT}/../models}"
 
 link_model() {
   local model_name="$1"

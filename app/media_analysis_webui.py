@@ -28,7 +28,7 @@ ASSET_ROOT = REPO_ROOT / "assets"
 WEBUI_STATE = Path(os.environ.get("WEBUI_STATE", str(REPO_ROOT / "state")))
 UPLOAD_DIR = WEBUI_STATE / "uploads"
 JOB_STATE_DIR = WEBUI_STATE / "jobs"
-DEFAULT_OUTPUT_ROOT = Path(os.environ.get("MEDIA_OUTPUT_ROOT", "/mnt/c/Users/Administrator/Desktop/media_analysis"))
+DEFAULT_OUTPUT_ROOT = Path(os.environ.get("MEDIA_OUTPUT_ROOT", str(REPO_ROOT / "outputs")))
 ASR_IMAGE = os.environ.get("ASR_IMAGE", "ragflow-qwen-asr:0.0.6")
 MEDIA_TOOL_IMAGE = os.environ.get(
     "MEDIA_TOOL_IMAGE",
@@ -550,7 +550,7 @@ HTML = """<!doctype html>
             <div class="delivery-item">最终导演分析模板</div>
           </div>
           <div class="path-label">DEFAULT OUTPUT</div>
-          <div class="side-path">C:\\Users\\Administrator\\Desktop\\media_analysis</div>
+          <div class="side-path">由 MEDIA_OUTPUT_ROOT 配置</div>
         </section>
       </aside>
     </div>

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -21,8 +22,8 @@ from typing import Any
 from asset_naming import artifact_stem, derived_relative_path, media_category
 
 
-SOURCE_ROOT = Path("/mnt/c/Users/Administrator/Documents/ComfyUI/output")
-OUTPUT_ROOT = Path("/mnt/c/Users/Administrator/Documents/AI_Asset_Output/media_analysis")
+SOURCE_ROOT = Path(os.environ.get("MEDIA_SOURCE_ROOT", "input"))
+OUTPUT_ROOT = Path(os.environ.get("MEDIA_OUTPUT_ROOT", "outputs"))
 RECORDS_FILE_NAME = "audio_records.jsonl"
 INDEX_FILE_NAME = "audio_index.md"
 TRANSCRIPT_DIR_NAME = "transcripts"
