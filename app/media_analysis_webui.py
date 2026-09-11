@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import mimetypes
@@ -12,6 +13,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,11 +23,12 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
-PIPELINE = REPO_ROOT / "vision_pipeline.py"
+PIPELINE = REPO_ROOT / "media_analysis_pipeline.py"
 WEBUI_STATE = Path(os.environ.get("WEBUI_STATE", str(REPO_ROOT / "state")))
 UPLOAD_DIR = WEBUI_STATE / "uploads"
 JOB_STATE_DIR = WEBUI_STATE / "jobs"
 DEFAULT_OUTPUT_ROOT = Path(os.environ.get("MEDIA_OUTPUT_ROOT", "/mnt/c/Users/Administrator/Desktop/media_analysis"))
+ASR_IMAGE = os.environ.get("ASR_IMAGE", "ragflow-qwen-asr:0.0.6")
 MEDIA_TOOL_IMAGE = os.environ.get(
     "MEDIA_TOOL_IMAGE",
     os.environ.get("MINICPM_IMAGE", "swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.26.0"),
@@ -38,6 +41,92 @@ for directory in (UPLOAD_DIR, JOB_STATE_DIR, DEFAULT_OUTPUT_ROOT):
 
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.RLock()
+# A single process owns the GPU transition ASR -> visual -> packaging.  This
+# prevents two WebUI uploads from stopping/restarting the same VLM container
+# underneath each other.
+ANALYSIS_LOCK = threading.Lock()
+GPU_STATS_LOCK = threading.Lock()
+GPU_STATS_CACHE_AT = 0.0
+GPU_STATS_CACHE: dict[str, object] = {
+    "available": False,
+    "message": "等待 GPU 状态",
+}
+
+
+def gpu_status() -> dict[str, object]:
+    """Return cached nvidia-smi telemetry without blocking the analysis worker."""
+
+    global GPU_STATS_CACHE_AT, GPU_STATS_CACHE
+    now = time.monotonic()
+    with GPU_STATS_LOCK:
+        if now - GPU_STATS_CACHE_AT < 1.0:
+            return dict(GPU_STATS_CACHE)
+
+    value: dict[str, object]
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode:
+            value = {"available": False, "message": "nvidia-smi 不可用"}
+        else:
+            rows: list[dict[str, object]] = []
+            for row in csv.reader(result.stdout.splitlines(), skipinitialspace=True):
+                if len(row) < 7:
+                    continue
+                try:
+                    def metric(raw: str) -> float | None:
+                        clean = raw.strip()
+                        if clean.upper() in {"N/A", "NOT SUPPORTED", "[NOT SUPPORTED]"}:
+                            return None
+                        return float(clean)
+
+                    rows.append(
+                        {
+                            "index": row[0].strip(),
+                            "name": row[1].strip(),
+                            "utilization": metric(row[2]),
+                            "memory_used_mb": metric(row[3]),
+                            "memory_total_mb": metric(row[4]),
+                            "temperature_c": metric(row[5]),
+                            "power_w": metric(row[6]),
+                        }
+                    )
+                except (TypeError, ValueError):
+                    continue
+            if not rows:
+                value = {"available": False, "message": "未读取到 GPU"}
+            else:
+                utilization = [float(item["utilization"]) for item in rows if item["utilization"] is not None]
+                memory_used = [float(item["memory_used_mb"]) for item in rows if item["memory_used_mb"] is not None]
+                memory_total = [float(item["memory_total_mb"]) for item in rows if item["memory_total_mb"] is not None]
+                temperatures = [float(item["temperature_c"]) for item in rows if item["temperature_c"] is not None]
+                power = [float(item["power_w"]) for item in rows if item["power_w"] is not None]
+                value = {
+                    "available": True,
+                    "name": str(rows[0]["name"]) if len(rows) == 1 else f"{len(rows)} 张 GPU",
+                    "count": len(rows),
+                    "utilization_pct": round(max(utilization), 1) if utilization else None,
+                    "memory_used_mb": round(sum(memory_used), 1) if memory_used else None,
+                    "memory_total_mb": round(sum(memory_total), 1) if memory_total else None,
+                    "temperature_c": round(max(temperatures), 1) if temperatures else None,
+                    "power_w": round(sum(power), 1) if power else None,
+                    "updated_at": datetime.now().isoformat(timespec="seconds"),
+                }
+    except (OSError, subprocess.SubprocessError) as exc:
+        value = {"available": False, "message": f"GPU 状态不可用：{type(exc).__name__}"}
+
+    with GPU_STATS_LOCK:
+        GPU_STATS_CACHE_AT = time.monotonic()
+        GPU_STATS_CACHE = value
+        return dict(GPU_STATS_CACHE)
 
 
 HTML = """<!doctype html>
@@ -157,6 +246,23 @@ HTML = """<!doctype html>
     progress::-webkit-progress-bar { background: #1c2a45; border-radius: 999px; }
     progress::-webkit-progress-value { background: linear-gradient(90deg, var(--blue), #6b59e9); border-radius: 999px; }
     progress::-moz-progress-bar { background: linear-gradient(90deg, var(--blue), #6b59e9); border-radius: 999px; }
+    .progress-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-top: 18px; }
+    .progress-head strong { display: block; font-size: 16px; }
+    .progress-percent { color: var(--blue); font: 800 30px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: -.06em; }
+    .run-plan { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 15px; }
+    .plan-step { min-width: 0; padding: 10px 11px; border: 1px solid #263b60; border-radius: 11px; background: #0e1a30; opacity: .62; transition: border .2s, background .2s, opacity .2s, transform .2s; }
+    .plan-step.active { border-color: #6f96ff; background: #172a50; opacity: 1; box-shadow: 0 0 0 1px #6f96ff2b, 0 8px 20px #3154a51c; transform: translateY(-1px); }
+    .plan-step.done { border-color: #4a9985; background: #102d2d; opacity: 1; }
+    .plan-index { display: block; margin-bottom: 6px; color: #8198ca; font: 800 10px ui-monospace, monospace; }
+    .plan-step strong, .plan-step span:last-child { display: block; }
+    .plan-step strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .plan-step span:last-child { margin-top: 4px; overflow: hidden; color: #8293b0; font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+    .telemetry-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+    .telemetry-item { min-width: 0; padding: 12px; border: 1px solid #263b60; border-radius: 12px; background: linear-gradient(145deg, #12213d, #0d182c); }
+    .telemetry-label { display: block; margin-bottom: 7px; color: #8195b7; font-size: 10px; letter-spacing: .07em; }
+    .telemetry-value { display: block; overflow: hidden; color: #e1eaff; font: 750 17px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+    .telemetry-sub { display: block; margin-top: 6px; overflow: hidden; color: #8293b0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .telemetry-foot { margin-top: 10px; color: #7489aa; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
     .row { display: flex; justify-content: space-between; gap: 18px; align-items: center; }
     .status { padding: 6px 10px; border: 1px solid #3e5d9b; border-radius: 999px; background: #1a2e5b; color: #a8c0ff; font-size: 12px; font-weight: 700; }
     .error { color: #ff9b9b; white-space: pre-wrap; }
@@ -197,8 +303,8 @@ HTML = """<!doctype html>
     .studio-footer span:last-child { color: #7387aa; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
     @media (max-width: 920px) { .studio-grid { grid-template-columns: 1fr; } .studio-sidebar { position: static; grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 720px) { main { width: min(100% - 24px, 1240px); padding-top: 26px; } .hero-row { align-items: flex-start; flex-direction: column; } .hero-stage { align-self: center; margin-top: -8px; } .flow { grid-template-columns: 1fr 1fr; } .preview-top, .timeline-actions { align-items: flex-start; flex-direction: column; } .preview-meta { justify-content: flex-start; } .quick-actions { flex-wrap: wrap; } .studio-sidebar { grid-template-columns: 1fr; } }
-    @media (max-width: 480px) { main { width: min(100% - 20px, 980px); } .card { padding: 17px; border-radius: 15px; } .range-grid, .flow { grid-template-columns: 1fr; } .local-pill { align-self: flex-start; } }
+    @media (max-width: 720px) { main { width: min(100% - 24px, 1240px); padding-top: 26px; } .hero-row { align-items: flex-start; flex-direction: column; } .hero-stage { align-self: center; margin-top: -8px; } .flow { grid-template-columns: 1fr 1fr; } .preview-top, .timeline-actions { align-items: flex-start; flex-direction: column; } .preview-meta { justify-content: flex-start; } .quick-actions { flex-wrap: wrap; } .studio-sidebar { grid-template-columns: 1fr; } .run-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); } .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 480px) { main { width: min(100% - 20px, 980px); } .card { padding: 17px; border-radius: 15px; } .range-grid, .flow, .run-plan, .telemetry-grid { grid-template-columns: 1fr; } .local-pill { align-self: flex-start; } }
 
     /* Minimal geometric light theme */
     :root { color-scheme: light; --ink: #17354f; --muted: #718aa0; --line: #dceaf3; --blue: #3988c2; --blue-dark: #266c9f; --cyan: #55b9d8; --soft: #f1f8fc; --panel: rgba(255, 255, 255, .94); }
@@ -266,6 +372,16 @@ HTML = """<!doctype html>
     progress::-webkit-progress-bar { background: #e0edf4; }
     progress::-webkit-progress-value { background: linear-gradient(90deg, #55a8ce, #809fdd); }
     progress::-moz-progress-bar { background: linear-gradient(90deg, #55a8ce, #809fdd); }
+    .progress-percent { color: #3988c2; }
+    .plan-step { border-color: #d6e7ef; background: #f8fcfe; }
+    .plan-step.active { border-color: #65a8ca; background: #eaf6fb; box-shadow: 0 0 0 1px #65a8ca24, 0 8px 20px #4d83a514; }
+    .plan-step.done { border-color: #8cc9b0; background: #f0faf5; }
+    .plan-index { color: #70a0b9; }
+    .plan-step span:last-child { color: #7891a3; }
+    .telemetry-item { border-color: #d6e7ef; background: linear-gradient(145deg, #f8fcfe, #eef8fc); box-shadow: 0 3px 10px #4d83a50b; }
+    .telemetry-label { color: #7b96a8; }
+    .telemetry-value { color: #26516b; }
+    .telemetry-sub, .telemetry-foot { color: #7891a3; }
     .status { border-color: #b8d8e8; background: #edf8fc; color: #327baa; }
     .error { color: #c45555; }
     pre { background: #eef7fb; border: 1px solid #d6e8f0; color: #355a72; }
@@ -307,7 +423,7 @@ HTML = """<!doctype html>
       <div class="hero-row">
         <div>
           <h1>视频导演拉片分析 <span class="title-mark">STUDIO</span></h1>
-          <p class="hint">把视频交给本地视觉模型，生成可回看、可下载、可继续加工的导演拉片证据。</p>
+          <p class="hint">把视频交给本地模型，得到可回看、可下载、可继续加工的视觉与声音时间线。</p>
         </div>
         <div class="hero-tools">
           <div class="local-pill"><span></span>本地运行 · 不上传云端</div>
@@ -380,7 +496,7 @@ HTML = """<!doctype html>
       <aside class="studio-sidebar">
         <section class="card model-card">
           <div class="side-head">
-            <div><div class="section-label">LOCAL MODEL</div><h2>视觉引擎</h2></div>
+            <div><div class="section-label">LOCAL MODELS</div><h2>分析引擎</h2></div>
             <span class="live-badge">GPU READY</span>
           </div>
           <div class="model-stack">
@@ -388,20 +504,28 @@ HTML = """<!doctype html>
               <span class="model-mark">V</span>
               <div class="model-info"><small>视觉理解 · 导演拉片</small><strong>MiniCPM-V-4.5-GPTQ</strong><em>逐秒高清帧 + 20 秒上下文</em></div>
             </div>
+            <div class="model-row">
+              <span class="model-mark audio">A</span>
+              <div class="model-info"><small>语音识别 · ASR</small><strong>Qwen3-ASR-0.6B</strong><em>原始语音与分段转写</em></div>
+            </div>
+            <div class="model-row">
+              <span class="model-mark align">T</span>
+              <div class="model-info"><small>时间对齐 · ForcedAligner</small><strong>Qwen3-ForcedAligner-0.6B</strong><em>词级时间戳与字幕轨</em></div>
+            </div>
           </div>
-          <div class="gpu-note">云端 GPU 上保持视觉模型常驻，专注处理逐秒帧、上下文联系图和镜头细节。</div>
+          <div class="gpu-note">模型按 ASR → 视觉 → 整理顺序切换，尽量避免多个大模型同时占用显存。</div>
         </section>
         <section class="card delivery-card">
           <div class="side-head">
             <div><div class="section-label">DELIVERY</div><h2>输出工作包</h2></div>
             <span class="tag">V1</span>
           </div>
-          <div class="delivery-stat"><strong>01</strong><span>份核心视觉报告<br>配套完整画面证据</span></div>
+          <div class="delivery-stat"><strong>04</strong><span>份主文档<br>可下载、可继续加工</span></div>
           <div class="delivery-list">
             <div class="delivery-item">纯视觉分析</div>
-            <div class="delivery-item">逐秒高清帧</div>
-            <div class="delivery-item">20 秒上下文联系图</div>
-            <div class="delivery-item">5 秒细节证据组</div>
+            <div class="delivery-item">纯 ASR 与时间戳</div>
+            <div class="delivery-item">代码综合时间线</div>
+            <div class="delivery-item">最终导演分析模板</div>
           </div>
           <div class="path-label">DEFAULT OUTPUT</div>
           <div class="side-path">C:\\Users\\Administrator\\Desktop\\media_analysis</div>
@@ -415,11 +539,11 @@ HTML = """<!doctype html>
       </div>
       <div class="flow">
         <div class="flow-item"><span class="flow-num">01</span><strong>截取范围</strong><span>按开始秒和结束秒生成分析片段。</span></div>
-        <div class="flow-item"><span class="flow-num">02</span><strong>逐秒取帧</strong><span>按每秒一帧保留原尺寸画面证据。</span></div>
-        <div class="flow-item"><span class="flow-num">03</span><strong>20 秒上下文</strong><span>联系图与 5 秒细节组共同描述镜头变化。</span></div>
-        <div class="flow-item"><span class="flow-num">04</span><strong>整理下载</strong><span>输出纯视觉报告、索引和全部证据目录。</span></div>
+        <div class="flow-item"><span class="flow-num">02</span><strong>声音时间线</strong><span>ASR + ForcedAligner 生成旁白和时间戳。</span></div>
+        <div class="flow-item"><span class="flow-num">03</span><strong>视觉拉片</strong><span>1 秒高清帧、20 秒联系图、5 秒细节组。</span></div>
+        <div class="flow-item"><span class="flow-num">04</span><strong>整理下载</strong><span>输出四份主文档及 SRT/VTT 字幕。</span></div>
       </div>
-      <p class="small">当前仓库只处理视觉证据；声音、ASR 和其他模型不进入这个 WebUI 的云端部署包。</p>
+      <p class="small">前三份是可复核的机器产物；第四份是解释层。没有额外提交最终分析时，第四份会显示待处理模板。</p>
     </section>
 
     <section id="progress-card" class="card" hidden>
@@ -427,8 +551,24 @@ HTML = """<!doctype html>
         <strong id="filename">等待任务</strong>
         <span id="status" class="status">等待中</span>
       </div>
+      <div class="progress-head">
+        <div><div class="section-label">LIVE PROCESS</div><strong>处理进度</strong></div>
+        <span id="progress-percent" class="progress-percent">0%</span>
+      </div>
       <progress id="progress" value="0" max="100"></progress>
       <div id="phase" class="small">尚未开始</div>
+      <div class="run-plan" aria-label="任务计划">
+        <div class="plan-step" data-plan-step="0"><span class="plan-index">01</span><strong>准备与截取</strong><span>生成分析输入</span></div>
+        <div class="plan-step" data-plan-step="1"><span class="plan-index">02</span><strong>ASR + 对齐</strong><span>语音与词级时间戳</span></div>
+        <div class="plan-step" data-plan-step="2"><span class="plan-index">03</span><strong>视觉拉片</strong><span>1fps / 20秒 / 5秒</span></div>
+        <div class="plan-step" data-plan-step="3"><span class="plan-index">04</span><strong>综合打包</strong><span>四份文档与字幕</span></div>
+      </div>
+      <div class="telemetry-grid">
+        <div class="telemetry-item"><span class="telemetry-label">GPU 利用率</span><strong id="gpu-utilization" class="telemetry-value">--</strong><span id="gpu-utilization-sub" class="telemetry-sub">等待采样</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">显存占用</span><strong id="gpu-memory" class="telemetry-value">--</strong><span id="gpu-memory-sub" class="telemetry-sub">已用 / 总量</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">温度 / 功耗</span><strong id="gpu-thermal" class="telemetry-value">--</strong><span id="gpu-power" class="telemetry-sub">功耗 --</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
+      </div>
       <pre id="logs"></pre>
     </section>
 
@@ -439,7 +579,7 @@ HTML = """<!doctype html>
       <ul id="files"></ul>
       <p id="error" class="error"></p>
     </section>
-    <div class="studio-footer"><span>MEDIA ANALYSIS VISION STUDIO · LOCAL PIPELINE</span><span>MiniCPM-V-4_5-GPTQ</span></div>
+    <div class="studio-footer"><span>MEDIA ANALYSIS STUDIO · LOCAL PIPELINE</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
   </main>
   <script>
     const form = document.getElementById("upload-form");
@@ -450,8 +590,18 @@ HTML = """<!doctype html>
     const filename = document.getElementById("filename");
     const status = document.getElementById("status");
     const progress = document.getElementById("progress");
+    const progressPercent = document.getElementById("progress-percent");
     const phase = document.getElementById("phase");
+    const planSteps = Array.from(document.querySelectorAll("[data-plan-step]"));
     const logs = document.getElementById("logs");
+    const gpuUtilization = document.getElementById("gpu-utilization");
+    const gpuUtilizationSub = document.getElementById("gpu-utilization-sub");
+    const gpuMemory = document.getElementById("gpu-memory");
+    const gpuMemorySub = document.getElementById("gpu-memory-sub");
+    const gpuThermal = document.getElementById("gpu-thermal");
+    const gpuPower = document.getElementById("gpu-power");
+    const gpuName = document.getElementById("gpu-name");
+    const gpuRefresh = document.getElementById("gpu-refresh");
     const outputDir = document.getElementById("output-dir");
     const files = document.getElementById("files");
     const errorBox = document.getElementById("error");
@@ -660,13 +810,65 @@ HTML = """<!doctype html>
       }
     });
 
+    function formatMegabytes(value) {
+      if (!Number.isFinite(Number(value))) return "--";
+      const mb = Number(value);
+      if (mb >= 1024) return (mb / 1024).toFixed(1) + " GB";
+      return Math.round(mb) + " MB";
+    }
+
+    function updateGpu(gpu) {
+      if (!gpu || !gpu.available) {
+        gpuUtilization.textContent = "--";
+        gpuUtilizationSub.textContent = (gpu && gpu.message) || "等待 GPU 状态";
+        gpuMemory.textContent = "--";
+        gpuMemorySub.textContent = "已用 / 总量";
+        gpuThermal.textContent = "--";
+        gpuPower.textContent = "功耗 --";
+        gpuName.textContent = "不可用";
+        gpuRefresh.textContent = "未读取到 nvidia-smi";
+        return;
+      }
+      const utilization = Number(gpu.utilization_pct);
+      gpuUtilization.textContent = Number.isFinite(utilization) ? utilization.toFixed(0) + "%" : "--";
+      gpuUtilizationSub.textContent = gpu.count > 1 ? "最高占用 · " + gpu.count + " 张" : "实时采样";
+      const used = formatMegabytes(gpu.memory_used_mb);
+      const total = formatMegabytes(gpu.memory_total_mb);
+      gpuMemory.textContent = used + " / " + total;
+      const memoryPct = Number(gpu.memory_total_mb) > 0 ? Number(gpu.memory_used_mb) / Number(gpu.memory_total_mb) * 100 : NaN;
+      gpuMemorySub.textContent = Number.isFinite(memoryPct) ? memoryPct.toFixed(0) + "% 已用" : "已用 / 总量";
+      const temperature = Number(gpu.temperature_c);
+      gpuThermal.textContent = Number.isFinite(temperature) ? temperature.toFixed(0) + "°C" : "--";
+      const power = Number(gpu.power_w);
+      gpuPower.textContent = Number.isFinite(power) ? "功耗 " + power.toFixed(0) + " W" : "功耗 --";
+      gpuName.textContent = gpu.name || "GPU";
+      gpuRefresh.textContent = gpu.updated_at ? "更新 " + gpu.updated_at.slice(11) : "实时采样";
+    }
+
+    function updatePlan(job, percent) {
+      const phaseText = String(job.phase || "");
+      let active = 0;
+      if (phaseText.includes("ASR") || phaseText.includes("对齐") || (percent >= 5 && percent < 35)) active = 1;
+      if (phaseText.includes("视觉") || (percent >= 35 && percent < 90)) active = 2;
+      if (phaseText.includes("生成") || phaseText.includes("整理") || percent >= 90) active = 3;
+      if (job.status === "done") active = planSteps.length;
+      planSteps.forEach(function(step, index) {
+        step.classList.toggle("done", index < active || job.status === "done");
+        step.classList.toggle("active", index === active && job.status !== "done" && job.status !== "failed");
+      });
+    }
+
     function showJob(job) {
       progressCard.hidden = false;
       resultCard.hidden = job.status !== "done" && job.status !== "failed";
       filename.textContent = job.filename || "视频分析任务";
       status.textContent = job.status_label || job.status;
-      progress.value = job.progress || 0;
-      phase.textContent = (job.progress || 0) + "% · " + (job.phase || "处理中");
+      const percent = Math.max(0, Math.min(100, Number(job.progress) || 0));
+      progress.value = percent;
+      progressPercent.textContent = percent.toFixed(0) + "%";
+      phase.textContent = percent.toFixed(0) + "% · " + (job.phase || "处理中");
+      updatePlan(job, percent);
+      updateGpu(job.gpu);
       logs.textContent = (job.logs || []).join("\\n");
       logs.scrollTop = logs.scrollHeight;
       if (job.output_dir) {
@@ -793,27 +995,59 @@ def files_for_job(job_id: str) -> list[dict[str, str]]:
         "01_纯视觉分析.md",
         "视觉分析文本汇总.md",
         "视觉片段索引.jsonl",
-        "测试视频信息.md",
+        "02_纯ASR与时间戳.md",
+        "03_代码综合时间线.md",
+        "04_最终导演分析.md",
         "分析清单.json",
+        "audio_index.md",
+        "audio_records.jsonl",
     ]
     result = []
     for name in names:
         if (output / name).is_file():
             result.append({"name": name, "url": f"/api/jobs/{quote(job_id)}/files/{quote(name)}"})
+    timeline_dir = output / "02_视频" / "音轨与时间轴"
+    for path in (
+        sorted(timeline_dir.glob("*.json"))
+        + sorted(timeline_dir.glob("*.srt"))
+        + sorted(timeline_dir.glob("*.vtt"))
+    ):
+        result.append(
+            {
+                "name": str(Path("02_视频") / "音轨与时间轴" / path.name),
+                "url": f"/api/jobs/{quote(job_id)}/files/{quote(str(path.relative_to(output)))}",
+            }
+        )
     return result
 
 
 def update_progress_from_line(job_id: str, line: str) -> None:
-    if "阶段 1/2" in line:
-        add_log(job_id, line, 5, "视觉分析准备")
+    if "阶段 1/3 完成" in line:
+        add_log(job_id, line, 32, "ASR 与 ForcedAligner 完成")
+    elif "阶段 1/3" in line:
+        add_log(job_id, line, 5, "ASR 与 ForcedAligner")
+    elif "加载 ASR" in line:
+        add_log(job_id, line, 12, "加载 ASR 模型")
+    elif "加载 ForcedAligner" in line:
+        add_log(job_id, line, 16, "加载时间对齐模型")
+    elif "-> 完成:" in line:
+        add_log(job_id, line, 30, "ASR 完成")
+    elif "阶段 2/3 完成" in line:
+        add_log(job_id, line, 88, "视觉分析完成")
+    elif "阶段 2/3" in line:
+        add_log(job_id, line, 35, "视觉分析")
+    elif "视觉进度" in line:
+        match = re.search(r"视觉进度\s*[=:：]\s*(\d+)%", line)
+        progress = int(match.group(1)) if match else 35
+        add_log(job_id, line, min(88, max(35, progress)), "视觉分析：连续画面")
     elif "20秒上下文完成" in line:
         with JOBS_LOCK:
-            current = int(JOBS[job_id].get("progress", 8))
+            current = int(JOBS[job_id].get("progress", 35))
         add_log(job_id, line, min(86, current + 2), "视觉分析：20 秒批次")
     elif "高清逐秒/20秒上下文分析完成" in line:
-        add_log(job_id, line, 88, "视觉证据完成")
-    elif "阶段 2/2" in line:
-        add_log(job_id, line, 90, "生成纯视觉报告")
+        add_log(job_id, line, 88, "视觉分析完成")
+    elif "阶段 3/3" in line:
+        add_log(job_id, line, 90, "生成四份文档")
     elif "已生成：" in line:
         add_log(job_id, line, 96, "整理输出")
     else:
@@ -836,7 +1070,7 @@ def trim_video(source: Path, target: Path, start_sec: float, end_sec: float | No
         f"{target.parent}:/data/work",
         "--entrypoint",
         "ffmpeg",
-        MEDIA_TOOL_IMAGE,
+        ASR_IMAGE,
         "-hide_banner",
         "-loglevel",
         "error",
@@ -875,6 +1109,21 @@ def trim_video(source: Path, target: Path, start_sec: float, end_sec: float | No
 
 
 def run_job(
+    job_id: str,
+    source: Path,
+    original: str,
+    output: Path,
+    start_sec: float,
+    end_sec: float | None,
+) -> None:
+    if ANALYSIS_LOCK.locked():
+        add_log(job_id, "已有任务占用 GPU，当前任务进入队列。", 0, "排队等待 GPU")
+    with ANALYSIS_LOCK:
+        add_log(job_id, "已获得 GPU 分析资源，按计划开始执行。", 1, "准备中")
+        _run_job(job_id, source, original, output, start_sec, end_sec)
+
+
+def _run_job(
     job_id: str,
     source: Path,
     original: str,
@@ -959,7 +1208,7 @@ def run_job(
             add_log(job_id, f"分析进程退出，代码 {return_code}。")
             update_job(job_id, status="failed", status_label="失败", error=f"分析进程退出码：{return_code}")
             return
-        add_log(job_id, "纯视觉报告与证据索引已生成。", 100, "完成")
+        add_log(job_id, "四份主文档已生成。", 100, "完成")
         update_job(job_id, status="done", status_label="完成", progress=100, files=files_for_job(job_id))
     except Exception as exc:
         add_log(job_id, f"任务异常：{type(exc).__name__}: {exc}")
@@ -1071,6 +1320,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "任务不存在"}, 404)
                 return
             result["files"] = files_for_job(job_id)
+            result["gpu"] = gpu_status()
             result.pop("thread", None)
             self.send_json(result)
             return
@@ -1154,6 +1404,7 @@ class Handler(BaseHTTPRequestHandler):
                 JOBS[job_id]["thread"] = thread
             thread.start()
             response = {key: value for key, value in JOBS[job_id].items() if key != "thread"}
+            response["gpu"] = gpu_status()
             self.send_json(response, 202)
         except Exception as exc:
             if target and target.exists():

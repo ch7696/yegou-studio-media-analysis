@@ -8,25 +8,33 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
   set +a
 fi
 MODEL_ROOT_VALUE="${MODEL_ROOT:-/home/administrator/models}"
-SOURCE="${MODEL_ROOT_VALUE}/MiniCPM-V-4_5-GPTQ"
-TARGET="${REPO_ROOT}/models/MiniCPM-V-4_5-GPTQ"
 
-if [[ ! -d "$SOURCE" ]]; then
-  echo "模型目录不存在：$SOURCE" >&2
-  exit 1
-fi
-if [[ -e "$TARGET" && ! -L "$TARGET" ]]; then
-  echo "目标已存在且不是软链接：$TARGET" >&2
-  exit 1
-fi
-if [[ -L "$TARGET" ]]; then
-  CURRENT="$(readlink "$TARGET")"
-  if [[ "$CURRENT" != "$SOURCE" ]]; then
-    echo "已有软链接指向其他目录：$TARGET -> $CURRENT" >&2
+link_model() {
+  local model_name="$1"
+  local source="${MODEL_ROOT_VALUE}/${model_name}"
+  local target="${REPO_ROOT}/models/${model_name}"
+
+  if [[ ! -d "$source" ]]; then
+    echo "模型目录不存在：$source" >&2
     exit 1
   fi
-else
-  ln -s "$SOURCE" "$TARGET"
-fi
+  if [[ -e "$target" && ! -L "$target" ]]; then
+    echo "目标已存在且不是软链接：$target" >&2
+    exit 1
+  fi
+  if [[ -L "$target" ]]; then
+    local current
+    current="$(readlink "$target")"
+    if [[ "$current" != "$source" ]]; then
+      echo "已有软链接指向其他目录：$target -> $current" >&2
+      exit 1
+    fi
+  else
+    ln -s "$source" "$target"
+  fi
+  echo "模型软链接：$target -> $source"
+}
 
-echo "模型软链接：$TARGET -> $SOURCE"
+link_model "MiniCPM-V-4_5-GPTQ"
+link_model "Qwen3-ASR-0.6B"
+link_model "Qwen3-ForcedAligner-0.6B"

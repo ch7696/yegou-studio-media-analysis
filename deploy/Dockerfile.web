@@ -11,8 +11,11 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+COPY asset_naming.py ./asset_naming.py
+COPY audio_timeline.py ./audio_timeline.py
+COPY media_analysis_pipeline.py ./media_analysis_pipeline.py
 COPY vision_pipeline.py ./
-COPY scripts/run_webui.sh ./scripts/run_webui.sh
+COPY scripts ./scripts
 
 EXPOSE 7867
 CMD ["python3", "app/media_analysis_webui.py", "--host", "0.0.0.0", "--port", "7867"]

@@ -232,7 +232,12 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
                 detail_start += 5.0
                 detail_id += 1
             visual_index.append(context_record)
-            print(f"20秒上下文完成：{slice_id}（{fmt_time(slice_start)}–{fmt_time(slice_end)}）", flush=True)
+            visual_progress = min(88, 35 + round((slice_end / duration) * 53))
+            print(
+                f"20秒上下文完成：{slice_id}（{fmt_time(slice_start)}–{fmt_time(slice_end)}），"
+                f"视觉进度={visual_progress}%",
+                flush=True,
+            )
             slice_start += 20.0
             slice_id += 1
         (output / "视觉分析文本汇总.md").write_text("\n".join(all_text), encoding="utf-8")
