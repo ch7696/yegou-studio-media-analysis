@@ -1,0 +1,39 @@
+services:
+  minicpm:
+    image: ${MINICPM_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.26.0}
+    container_name: ${MINICPM_CONTAINER:-vision-minicpm}
+    restart: unless-stopped
+    gpus: all
+    ipc: host
+    shm_size: 8g
+    ports:
+      - "${MINICPM_PORT:-8002}:8000"
+    environment:
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      VLLM_USE_V2_MODEL_RUNNER: "0"
+    volumes:
+      - ../models/MiniCPM-V-4_5-GPTQ:/models/minicpm:ro
+    command:
+      - --model
+      - /models/minicpm
+      - --served-model-name
+      - ${MINICPM_MODEL:-MiniCPM-V-4_5-GPTQ}
+      - --trust-remote-code
+      - --dtype
+      - auto
+      - --max-model-len
+      - "4096"
+      - --gpu-memory-utilization
+      - "0.70"
+      - --max-num-seqs
+      - "1"
+      - --limit-mm-per-prompt
+      - '{"image":1}'
+      - --enforce-eager
+      - --no-enable-prefix-caching
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --api-key
+      - x

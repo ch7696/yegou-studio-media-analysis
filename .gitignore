@@ -1,0 +1,40 @@
+# Runtime state and generated media
+state/
+outputs/
+data/
+logs/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.m4v
+*.wmv
+*.flv
+*.jpg
+*.jpeg
+*.png
+*.wav
+*.flac
+
+# Local configuration and secrets
+.env
+.api-token
+*.secret
+
+# Python/tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Local model links/weights; link_models.sh creates these outside Git
+models/*
+!models/.gitkeep
+!models/README.md
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
