@@ -269,18 +269,43 @@ HTML = """<!doctype html>
     .release-option strong { font-size: 12px; }
     .release-option small { margin-top: 4px; color: #8293b0; font-size: 11px; line-height: 1.5; }
     .batch-help { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed #42608c; border-radius: 10px; color: #8fa4c4; font-size: 12px; line-height: 1.5; }
-    .batch-file-list { display: grid; gap: 6px; max-height: 170px; margin-top: 10px; overflow: auto; }
-    .batch-file-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid #294064; border-radius: 9px; background: #0f1c32; color: #aebdd7; font-size: 11px; }
-    .batch-file-item span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .batch-file-item span:last-child { flex: 0 0 auto; color: #7185a7; font-family: ui-monospace, monospace; }
+    .batch-source-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .batch-source-actions .mini-button { flex: 0 0 auto; }
+    .batch-builder { margin-top: 13px; padding: 13px; border: 1px solid #2b4269; border-radius: 13px; background: #0d192e; }
+    .batch-builder-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .batch-builder-head strong { color: var(--ink); font-size: 13px; }
+    .batch-builder-head span { color: #7f94b5; font: 11px ui-monospace, monospace; }
+    .batch-builder-copy { margin: 5px 0 10px; color: #7f94b5; font-size: 11px; line-height: 1.5; }
+    .batch-builder-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .batch-builder-actions .mini-button { flex: 0 0 auto; }
+    .batch-file-list { display: grid; gap: 6px; max-height: 330px; margin-top: 10px; overflow: auto; }
+    .batch-file-item { display: grid; grid-template-columns: 18px 29px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid #294064; border-radius: 9px; background: #0f1c32; color: #aebdd7; font-size: 11px; cursor: grab; }
+    .batch-file-item:active { cursor: grabbing; }
+    .batch-file-item.dragging { opacity: .45; border-color: #6f96ff; }
+    .batch-file-handle { color: #7185a7; font-size: 15px; line-height: 1; }
+    .batch-file-order { color: #8298c1; font: 700 10px ui-monospace, monospace; }
+    .batch-file-main { min-width: 0; }
+    .batch-file-name, .batch-file-path { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .batch-file-name { color: #c7d4e9; }
+    .batch-file-path { margin-top: 3px; color: #7185a7; font-size: 10px; }
+    .batch-file-actions { display: flex; align-items: center; gap: 4px; }
+    .batch-file-actions button { width: auto; min-width: 25px; margin: 0; padding: 4px 6px; border: 1px solid #33486e; border-radius: 7px; background: #111f39; color: #9eafd0; font-size: 12px; line-height: 1; box-shadow: none; }
+    .batch-file-actions button:hover { border-color: #6f96ff; background: #182c50; color: var(--cyan); box-shadow: none; transform: none; }
+    .batch-file-actions button:disabled { background: transparent; color: #4a5b79; cursor: default; }
+    .batch-empty { padding: 14px 8px 5px; color: #7185a7; font-size: 11px; text-align: center; }
     .batch-queue-card { margin-top: 15px; padding-top: 14px; border-top: 1px solid #263b60; }
     .batch-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; color: #8094b3; font-size: 12px; }
     .batch-queue-head strong { color: var(--ink); font-size: 13px; }
+    .batch-queue-copy { margin: -3px 0 10px; color: #7185a7; font-size: 11px; line-height: 1.5; }
     .batch-queue-items { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
-    .batch-job-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #263b60; border-radius: 9px; background: #0f1b31; }
+    .batch-job-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #263b60; border-radius: 9px; background: #0f1b31; }
     .batch-job-index { color: #8298c1; font: 700 10px ui-monospace, monospace; }
     .batch-job-name { min-width: 0; overflow: hidden; color: #c7d4e9; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
     .batch-job-status { color: #8fa3c1; font-size: 11px; white-space: nowrap; }
+    .batch-job-controls { display: flex; gap: 4px; }
+    .batch-job-controls button { width: auto; min-width: 24px; margin: 0; padding: 4px 5px; border: 1px solid #33486e; border-radius: 7px; background: #111f39; color: #9eafd0; font-size: 11px; line-height: 1; box-shadow: none; }
+    .batch-job-controls button:hover { border-color: #6f96ff; background: #182c50; color: var(--cyan); box-shadow: none; transform: none; }
+    .batch-job-controls button:disabled { background: transparent; color: #4a5b79; cursor: default; }
     .batch-job-links { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: -3px; }
     .batch-job-links a { color: #8fb1ff; font-size: 10px; }
     .batch-job-item.done { border-color: #73b99c; background: #effaf5; }
@@ -439,11 +464,22 @@ HTML = """<!doctype html>
     .release-option { border-color: #d6e7ef; background: #f8fcfe; }
     .release-option small { color: #7891a3; }
     .batch-help { border-color: #b9d5e2; color: #6f899d; background: #f7fcfe; }
+    .batch-source-actions .mini-button, .batch-builder-actions .mini-button { border-color: #cde1eb; background: #f5fbfe; color: #54758b; }
+    .batch-source-actions .mini-button:hover, .batch-builder-actions .mini-button:hover { border-color: #83bdd8; background: #eaf7fc; color: #2b7eae; }
+    .batch-builder { border-color: #d6e7ef; background: #f7fcfe; }
+    .batch-builder-head strong { color: #244b66; }
+    .batch-builder-head span, .batch-builder-copy { color: #7891a3; }
     .batch-file-item { border-color: #d6e7ef; background: #f7fcfe; color: #4e7187; }
-    .batch-file-item span:last-child { color: #88a0af; }
+    .batch-file-item.dragging { border-color: #70afd0; }
+    .batch-file-handle, .batch-file-order, .batch-file-path, .batch-empty { color: #88a0af; }
+    .batch-file-name { color: #365e75; }
+    .batch-file-actions button, .batch-job-controls button { border-color: #cde1eb; background: #f5fbfe; color: #54758b; }
+    .batch-file-actions button:hover, .batch-job-controls button:hover { border-color: #83bdd8; background: #eaf7fc; color: #2b7eae; }
+    .batch-file-actions button:disabled, .batch-job-controls button:disabled { background: transparent; color: #b1c3cd; }
     .batch-queue-card { border-top-color: #d6e7ef; }
     .batch-queue-head { color: #7891a3; }
     .batch-queue-head strong { color: #244b66; }
+    .batch-queue-copy { color: #7891a3; }
     .batch-job-item { border-color: #d6e7ef; background: #f7fcfe; }
     .batch-job-index { color: #7797ad; }
     .batch-job-name { color: #365e75; }
@@ -562,12 +598,23 @@ HTML = """<!doctype html>
       </div>
       <form id="upload-form">
         <label class="upload-zone" id="drop-zone" for="video">
-          <input id="video" name="video" type="file" accept="video/*" required>
+          <input id="video" name="video" type="file" accept="video/*">
           <span class="upload-icon">↑</span>
           <span class="upload-copy"><strong id="upload-title">点击选择，或把视频拖到这里</strong><span id="upload-copy">支持 MP4、MOV、MKV、AVI、WebM 等常见格式</span></span>
         </label>
         <div id="file-name" class="file-name">尚未选择视频</div>
-        <div id="batch-file-list" class="batch-file-list" hidden></div>
+        <div id="batch-source-actions" class="batch-source-actions" hidden>
+          <button id="choose-folder" class="mini-button" type="button">选择视频文件夹</button>
+          <button id="sort-batch" class="mini-button" type="button">按文件名排序</button>
+          <button id="clear-batch" class="mini-button" type="button">清空队列</button>
+        </div>
+        <input id="folder-video" type="file" accept="video/*" webkitdirectory directory multiple hidden>
+        <section id="batch-builder" class="batch-builder" hidden>
+          <div class="batch-builder-head"><strong>待处理队列</strong><span id="batch-builder-count">0 个视频</span></div>
+          <p class="batch-builder-copy">拖动条目或使用 ↑ ↓ 调整处理顺序；可反复添加文件和文件夹，提交后按此顺序进入 GPU 队列。</p>
+          <div id="batch-file-list" class="batch-file-list"></div>
+          <div id="batch-empty" class="batch-empty">先选择视频，或读取一个视频文件夹。</div>
+        </section>
         <input id="analysis-mode" type="hidden" value="director">
         <span id="mode-help" class="small" hidden>完整处理视觉、ASR、ForcedAligner，并输出导演拉片资料。</span>
         <p id="batch-help" class="batch-help" hidden>批量模式默认分析每个视频的完整片段；同一批视频按顺序排队，单个视频失败会自动跳过。</p>
@@ -702,6 +749,7 @@ HTML = """<!doctype html>
       <pre id="logs"></pre>
       <section id="batch-queue-card" class="batch-queue-card" hidden>
         <div class="batch-queue-head"><strong>批量队列</strong><span id="batch-queue-count">0 / 0</span></div>
+        <p class="batch-queue-copy">等待中的视频可以用 ↑ ↓ 调整顺序；当前正在处理的视频不会被移动。</p>
         <div id="batch-queue-items" class="batch-queue-items"></div>
       </section>
     </section>
@@ -719,6 +767,7 @@ HTML = """<!doctype html>
   <script>
     const form = document.getElementById("upload-form");
     const fileInput = document.getElementById("video");
+    const folderInput = document.getElementById("folder-video");
     const startButton = document.getElementById("start");
     const progressCard = document.getElementById("progress-card");
     const resultCard = document.getElementById("result-card");
@@ -752,6 +801,13 @@ HTML = """<!doctype html>
     const releaseHelp = document.getElementById("release-help");
     const uploadTitle = document.getElementById("upload-title");
     const uploadCopy = document.getElementById("upload-copy");
+    const batchSourceActions = document.getElementById("batch-source-actions");
+    const chooseFolderButton = document.getElementById("choose-folder");
+    const sortBatchButton = document.getElementById("sort-batch");
+    const clearBatchButton = document.getElementById("clear-batch");
+    const batchBuilder = document.getElementById("batch-builder");
+    const batchBuilderCount = document.getElementById("batch-builder-count");
+    const batchEmpty = document.getElementById("batch-empty");
     const batchFileList = document.getElementById("batch-file-list");
     const batchQueueCard = document.getElementById("batch-queue-card");
     const batchQueueCount = document.getElementById("batch-queue-count");
@@ -799,6 +855,9 @@ HTML = """<!doctype html>
     let videoDuration = 0;
     let batchMode = false;
     let batchPollTimer = null;
+    let batchFiles = [];
+    let activeBatchId = null;
+    let draggedBatchIndex = null;
 
     function updateModePresentation() {
       const subtitle = analysisMode.value === "subtitle";
@@ -817,11 +876,13 @@ HTML = """<!doctype html>
           : "把视频拆成画面、声音和时间线，方便回看、复盘与继续创作。");
       uploadTitle.textContent = batchMode ? "点击选择多个视频，或把视频拖到这里" : "点击选择，或把视频拖到这里";
       uploadCopy.textContent = batchMode
-        ? "同一批视频默认全部分析整片，按选择顺序进入队列。"
+        ? "可连续添加文件或读取文件夹，整理好顺序后一次提交。"
         : "支持 MP4、MOV、MKV、AVI、WebM 等常见格式";
       fileInput.multiple = batchMode;
+      fileInput.required = !batchMode;
+      batchSourceActions.hidden = !batchMode;
+      batchBuilder.hidden = !batchMode;
       batchHelp.hidden = !batchMode;
-      batchFileList.hidden = !batchMode;
       document.getElementById("range-controls").hidden = batchMode;
       rangeNote.textContent = batchMode
         ? "批量模式不使用时间区间设置，每个视频都会从 00:00 分析到结尾。"
@@ -837,6 +898,11 @@ HTML = """<!doctype html>
         : (batchMode ? "逐个处理视觉、ASR、ForcedAligner，并为每个视频输出导演拉片资料。" : "完整处理视觉、ASR、ForcedAligner，并输出导演拉片资料。");
       modeHelp.hidden = false;
       startButton.textContent = batchMode ? (subtitle ? "加入批量字幕队列" : "加入批量分析队列") : (subtitle ? "开始提取字幕" : "开始分析");
+      if (batchMode) {
+        renderBatchFiles();
+      } else if (!startButton.disabled) {
+        startButton.disabled = false;
+      }
       flowStep2Title.textContent = subtitle ? "抽取画面" : "声音时间线";
       flowStep2Copy.textContent = subtitle ? "每秒保留一张可复核的字幕证据帧。" : "ASR + ForcedAligner 生成旁白和时间戳。";
       flowStep3Title.textContent = subtitle ? "读取字幕" : "视觉拉片";
@@ -878,13 +944,17 @@ HTML = """<!doctype html>
 
     function enterMode(mode, updateUrl = true) {
       const previousBatchMode = batchMode;
+      const previousAnalysisMode = analysisMode.value;
       batchMode = mode.endsWith("-batch");
       const baseMode = batchMode ? mode.slice(0, -6) : mode;
       analysisMode.value = baseMode === "subtitle" ? "subtitle" : "director";
-      if (previousBatchMode !== batchMode) {
+      if (previousBatchMode !== batchMode || previousAnalysisMode !== analysisMode.value) {
         fileInput.value = "";
+        folderInput.value = "";
+        batchFiles = [];
         showSelectedFiles();
       }
+      activeBatchId = null;
       if (timer) {
         clearTimeout(timer);
         timer = null;
@@ -909,8 +979,9 @@ HTML = """<!doctype html>
       workbenchView.hidden = true;
       batchMode = false;
       fileInput.value = "";
-      batchFileList.innerHTML = "";
-      batchFileList.hidden = true;
+      folderInput.value = "";
+      batchFiles = [];
+      renderBatchFiles();
       resetPreview();
       if (timer) {
         clearTimeout(timer);
@@ -1055,39 +1126,160 @@ HTML = """<!doctype html>
       videoPreview.load();
     }
 
-    function renderBatchFiles(selected) {
+    const batchVideoSuffixes = [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".wmv", ".flv"];
+
+    function isBatchVideo(file) {
+      if (!file) return false;
+      const name = String(file.name || "").toLowerCase();
+      return String(file.type || "").startsWith("video/") || batchVideoSuffixes.some(function(suffix) { return name.endsWith(suffix); });
+    }
+
+    function batchFilePath(file) {
+      return String(file.webkitRelativePath || file.name || "视频");
+    }
+
+    function batchFileKey(file) {
+      return batchFilePath(file) + "|" + file.size + "|" + file.lastModified;
+    }
+
+    function moveBatchFile(index, offset) {
+      const target = index + offset;
+      if (index < 0 || target < 0 || target >= batchFiles.length) return;
+      const moved = batchFiles.splice(index, 1)[0];
+      batchFiles.splice(target, 0, moved);
+      renderBatchFiles();
+    }
+
+    function removeBatchFile(index) {
+      if (index < 0 || index >= batchFiles.length) return;
+      batchFiles.splice(index, 1);
+      renderBatchFiles();
+    }
+
+    function renderBatchFiles() {
       batchFileList.innerHTML = "";
-      if (!batchMode || !selected.length) {
-        batchFileList.hidden = true;
+      if (!batchMode) {
+        batchBuilder.hidden = true;
         return;
       }
-      selected.forEach(function(file, index) {
+      batchBuilder.hidden = false;
+      batchBuilderCount.textContent = batchFiles.length + " 个视频";
+      batchEmpty.hidden = batchFiles.length > 0;
+      sortBatchButton.disabled = batchFiles.length < 2;
+      clearBatchButton.disabled = batchFiles.length === 0;
+      startButton.disabled = batchFiles.length === 0;
+      if (!batchFiles.length) {
+        fileName.textContent = "尚未加入视频";
+        return;
+      }
+      const totalSize = batchFiles.reduce(function(sum, file) { return sum + file.size; }, 0);
+      fileName.textContent = "队列中 " + batchFiles.length + " 个视频 · " + formatFileSize(totalSize);
+      batchFiles.forEach(function(file, index) {
         const item = document.createElement("div");
         item.className = "batch-file-item";
+        item.draggable = true;
+        item.dataset.index = String(index);
+        item.addEventListener("dragstart", function(event) {
+          draggedBatchIndex = index;
+          item.classList.add("dragging");
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        });
+        item.addEventListener("dragover", function(event) {
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        });
+        item.addEventListener("drop", function(event) {
+          event.preventDefault();
+          const from = draggedBatchIndex;
+          if (from === null || from === index || from < 0 || from >= batchFiles.length) return;
+          const moved = batchFiles.splice(from, 1)[0];
+          const destination = from < index ? index - 1 : index;
+          batchFiles.splice(destination, 0, moved);
+          draggedBatchIndex = null;
+          renderBatchFiles();
+        });
+        item.addEventListener("dragend", function() {
+          draggedBatchIndex = null;
+          item.classList.remove("dragging");
+        });
+
+        const handle = document.createElement("span");
+        handle.className = "batch-file-handle";
+        handle.textContent = "⠿";
+        handle.title = "拖动调整顺序";
+        const order = document.createElement("span");
+        order.className = "batch-file-order";
+        order.textContent = String(index + 1).padStart(2, "0");
+        const main = document.createElement("span");
+        main.className = "batch-file-main";
         const name = document.createElement("span");
-        name.textContent = String(index + 1).padStart(2, "0") + " · " + file.name;
-        const size = document.createElement("span");
-        size.textContent = formatFileSize(file.size);
-        item.appendChild(name);
-        item.appendChild(size);
+        name.className = "batch-file-name";
+        name.textContent = file.name || "视频";
+        const path = document.createElement("span");
+        path.className = "batch-file-path";
+        path.textContent = batchFilePath(file) + " · " + formatFileSize(file.size);
+        main.appendChild(name);
+        main.appendChild(path);
+        const actions = document.createElement("span");
+        actions.className = "batch-file-actions";
+        [["↑", "移到上一位", -1], ["↓", "移到下一位", 1]].forEach(function(entry) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = entry[0];
+          button.title = entry[1];
+          button.disabled = entry[2] < 0 ? index === 0 : index === batchFiles.length - 1;
+          button.addEventListener("click", function() { moveBatchFile(index, entry[2]); });
+          actions.appendChild(button);
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.title = "从队列移除";
+        remove.addEventListener("click", function() { removeBatchFile(index); });
+        actions.appendChild(remove);
+        item.appendChild(handle);
+        item.appendChild(order);
+        item.appendChild(main);
+        item.appendChild(actions);
         batchFileList.appendChild(item);
       });
-      batchFileList.hidden = false;
+    }
+
+    function addBatchFiles(fileList, fromFolder) {
+      const incoming = Array.from(fileList || []).filter(isBatchVideo);
+      if (fromFolder) {
+        incoming.sort(function(left, right) { return batchFilePath(left).localeCompare(batchFilePath(right), undefined, { numeric: true, sensitivity: "base" }); });
+      }
+      const existing = new Set(batchFiles.map(batchFileKey));
+      let skipped = 0;
+      incoming.forEach(function(file) {
+        const key = batchFileKey(file);
+        if (existing.has(key)) {
+          skipped += 1;
+          return;
+        }
+        existing.add(key);
+        batchFiles.push(file);
+      });
+      renderBatchFiles();
+      if (!incoming.length && fileList && fileList.length) {
+        fileName.textContent = "没有找到支持的视频文件";
+      } else if (skipped > 0) {
+        fileName.textContent += " · 已忽略重复 " + skipped + " 个";
+      }
     }
 
     function showSelectedFiles() {
-      const selected = Array.from(fileInput.files || []);
       startSec.value = "";
       endSec.value = "";
-      renderBatchFiles(selected);
-      if (!selected.length) {
-        fileName.textContent = "尚未选择视频";
+      if (batchMode) {
+        renderBatchFiles();
         resetPreview();
         return;
       }
-      if (batchMode) {
-        const totalSize = selected.reduce(function(sum, file) { return sum + file.size; }, 0);
-        fileName.textContent = "已选择 " + selected.length + " 个视频 · " + formatFileSize(totalSize);
+      const selected = Array.from(fileInput.files || []);
+      if (!selected.length) {
+        fileName.textContent = "尚未选择视频";
         resetPreview();
         return;
       }
@@ -1097,7 +1289,27 @@ HTML = """<!doctype html>
     }
 
     fileInput.addEventListener("change", function() {
-      showSelectedFiles();
+      if (batchMode) {
+        addBatchFiles(fileInput.files, false);
+        fileInput.value = "";
+      } else {
+        showSelectedFiles();
+      }
+    });
+    chooseFolderButton.addEventListener("click", function() { folderInput.click(); });
+    folderInput.addEventListener("change", function() {
+      addBatchFiles(folderInput.files, true);
+      folderInput.value = "";
+    });
+    sortBatchButton.addEventListener("click", function() {
+      batchFiles.sort(function(left, right) { return batchFilePath(left).localeCompare(batchFilePath(right), undefined, { numeric: true, sensitivity: "base" }); });
+      renderBatchFiles();
+    });
+    clearBatchButton.addEventListener("click", function() {
+      batchFiles = [];
+      fileInput.value = "";
+      folderInput.value = "";
+      renderBatchFiles();
     });
     videoPreview.addEventListener("loadedmetadata", function() {
       videoDuration = Number.isFinite(videoPreview.duration) ? videoPreview.duration : 0;
@@ -1148,8 +1360,12 @@ HTML = """<!doctype html>
     });
     dropZone.addEventListener("drop", function(event) {
       if (event.dataTransfer.files.length) {
-        fileInput.files = event.dataTransfer.files;
-        showSelectedFiles();
+        if (batchMode) {
+          addBatchFiles(event.dataTransfer.files, false);
+        } else {
+          fileInput.files = event.dataTransfer.files;
+          showSelectedFiles();
+        }
       }
     });
 
@@ -1251,7 +1467,36 @@ HTML = """<!doctype html>
       return "排队中";
     }
 
+    async function moveSubmittedBatchJob(batch, jobId, offset) {
+      const jobs = Array.isArray(batch.jobs) ? batch.jobs : [];
+      const pending = jobs.filter(function(job) { return job.status === "queued"; }).map(function(job) { return String(job.id); });
+      const currentIndex = pending.indexOf(String(jobId));
+      const targetIndex = currentIndex + offset;
+      if (currentIndex < 0 || targetIndex < 0 || targetIndex >= pending.length) return;
+      const moved = pending.splice(currentIndex, 1)[0];
+      pending.splice(targetIndex, 0, moved);
+      const pendingSet = new Set(pending);
+      let cursor = 0;
+      const requested = jobs.map(function(job) {
+        const id = String(job.id);
+        return pendingSet.has(id) ? pending[cursor++] : id;
+      });
+      try {
+        const response = await fetch("/api/batches/" + encodeURIComponent(batch.id) + "/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ job_ids: requested }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "队列调整失败");
+        showBatch(payload);
+      } catch (error) {
+        errorBox.textContent = "调整队列失败：" + String(error);
+      }
+    }
+
     function showBatch(batch) {
+      activeBatchId = batch.id || activeBatchId;
       progressCard.hidden = false;
       resultCard.hidden = true;
       batchQueueCard.hidden = false;
@@ -1268,6 +1513,7 @@ HTML = """<!doctype html>
       batchQueueCount.textContent = completed + " / " + total + " 已完成 · " + (Number(batch.failed) || 0) + " 个失败";
       batchQueueItems.innerHTML = "";
       const jobs = Array.isArray(batch.jobs) ? batch.jobs : [];
+      const pendingJobs = jobs.filter(function(job) { return job.status === "queued"; });
       jobs.forEach(function(job, index) {
         const item = document.createElement("div");
         item.className = "batch-job-item " + (job.status === "done" ? "done" : (job.status === "failed" || job.status === "cancelled" ? "failed" : ""));
@@ -1280,10 +1526,25 @@ HTML = """<!doctype html>
         name.textContent = job.filename || "视频";
         const state = document.createElement("span");
         state.className = "batch-job-status";
-        state.textContent = batchStatusLabel(job);
+        state.textContent = job.status === "queued" && job.queue_position ? "排队 · 全局第 " + job.queue_position : batchStatusLabel(job);
         item.appendChild(order);
         item.appendChild(name);
         item.appendChild(state);
+        if (job.status === "queued") {
+          const controls = document.createElement("span");
+          controls.className = "batch-job-controls";
+          [["↑", "上移", -1], ["↓", "下移", 1]].forEach(function(entry) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = entry[0];
+            button.title = entry[1];
+            const pendingIndex = pendingJobs.findIndex(function(item) { return String(item.id) === String(job.id); });
+            button.disabled = entry[2] < 0 ? pendingIndex === 0 : pendingIndex === pendingJobs.length - 1;
+            button.addEventListener("click", function() { moveSubmittedBatchJob(batch, job.id, entry[2]); });
+            controls.appendChild(button);
+          });
+          item.appendChild(controls);
+        }
         if (job.status === "done" && Array.isArray(job.files) && job.files.length) {
           const links = document.createElement("div");
           links.className = "batch-job-links";
@@ -1316,6 +1577,7 @@ HTML = """<!doctype html>
           batchPollTimer = null;
         }
       }
+      if (batchMode && !batchFiles.length) startButton.disabled = true;
     }
 
     async function poll(jobId) {
@@ -1349,7 +1611,7 @@ HTML = """<!doctype html>
 
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
-      if (!fileInput.files.length) return;
+      if (batchMode ? !batchFiles.length : !fileInput.files.length) return;
       startButton.disabled = true;
       progressCard.hidden = false;
       resultCard.hidden = true;
@@ -1357,7 +1619,8 @@ HTML = """<!doctype html>
       logs.textContent = "正在上传视频…";
       try {
         const body = new FormData();
-        Array.from(fileInput.files).forEach(function(file) { body.append("video", file); });
+        const filesToUpload = batchMode ? batchFiles : Array.from(fileInput.files);
+        filesToUpload.forEach(function(file) { body.append("video", file, file.name); });
         const query = new URLSearchParams();
         if (!batchMode && startSec.value.trim()) query.set("start_sec", startSec.value.trim());
         if (!batchMode && endSec.value.trim()) query.set("end_sec", endSec.value.trim());
@@ -1368,6 +1631,10 @@ HTML = """<!doctype html>
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "创建任务失败");
         if (batchMode) {
+          batchFiles = [];
+          fileInput.value = "";
+          folderInput.value = "";
+          renderBatchFiles();
           showBatch(payload);
           pollBatch(payload.id);
         } else {
@@ -1441,6 +1708,94 @@ def _job_from_state(job_id: str) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def pending_queue_tasks() -> list[dict[str, object]]:
+    """Copy waiting tasks without touching the queue's unfinished-task count."""
+
+    with JOB_QUEUE.mutex:
+        return [dict(task) for task in list(JOB_QUEUE.queue)]
+
+
+def pending_queue_snapshot() -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for position, task in enumerate(pending_queue_tasks(), start=1):
+        job_id = str(task.get("job_id", ""))
+        job = _job_from_state(job_id) or {}
+        result.append(
+            {
+                "position": position,
+                "job_id": job_id,
+                "filename": str(job.get("filename", task.get("original", "视频"))),
+                "status": str(job.get("status", "queued")),
+                "batch_id": str(task.get("batch_id", "")),
+            }
+        )
+    return result
+
+
+def reorder_batch_queue(batch_id: str, requested_job_ids: list[str]) -> dict | None:
+    """Reorder only waiting items from one batch while preserving global FIFO slots."""
+
+    with JOBS_LOCK:
+        batch = BATCHES.get(batch_id)
+        if batch is None:
+            batch = load_batch_state(batch_id)
+            if batch is None:
+                return None
+            BATCHES[batch_id] = batch
+        original_ids = [str(item) for item in batch.get("job_ids", [])]
+        known_ids = set(original_ids)
+        requested = [str(item) for item in requested_job_ids]
+        if len(requested) != len(set(requested)) or any(item not in known_ids for item in requested):
+            raise ValueError("队列顺序中包含无效或重复的视频任务")
+
+    with JOB_QUEUE.mutex:
+        pending = list(JOB_QUEUE.queue)
+        batch_slots = [
+            index
+            for index, task in enumerate(pending)
+            if str(task.get("batch_id", "")) == batch_id
+        ]
+        pending_batch_ids = [str(pending[index].get("job_id", "")) for index in batch_slots]
+        pending_batch_set = set(pending_batch_ids)
+        requested_pending = [item for item in requested if item in pending_batch_set]
+        requested_pending.extend(item for item in pending_batch_ids if item not in requested_pending)
+        task_by_id = {
+            str(task.get("job_id", "")): task
+            for task in pending
+            if str(task.get("batch_id", "")) == batch_id
+        }
+        reordered = list(pending)
+        for slot, job_id in zip(batch_slots, requested_pending):
+            reordered[slot] = task_by_id[job_id]
+        JOB_QUEUE.queue.clear()
+        JOB_QUEUE.queue.extend(reordered)
+
+    # Keep completed/running entries anchored in the visible history and move
+    # only the pending portion of the batch. This makes the UI match execution.
+    with JOBS_LOCK:
+        current = BATCHES.get(batch_id)
+        if current is None:
+            return None
+        pending_set = set(pending_batch_ids)
+        pending_iter = iter(requested_pending)
+        ordered_ids: list[str] = []
+        for job_id in original_ids:
+            if job_id in pending_set:
+                ordered_ids.append(next(pending_iter))
+            else:
+                ordered_ids.append(job_id)
+        current["job_ids"] = ordered_ids
+        current["queue_order"] = requested_pending
+        for index, job_id in enumerate(ordered_ids, start=1):
+            job = JOBS.get(job_id)
+            if job and job_id in pending_set:
+                job["batch_index"] = index
+                save_job_state(job)
+        current["queue_size"] = JOB_QUEUE.qsize()
+        save_batch_state(current)
+    return batch_snapshot(batch_id)
+
+
 def refresh_batch(batch_id: str) -> dict | None:
     with JOBS_LOCK:
         batch = BATCHES.get(batch_id)
@@ -1499,15 +1854,26 @@ def batch_snapshot(batch_id: str) -> dict | None:
     batch = refresh_batch(batch_id)
     if batch is None:
         return None
+    queued_positions = {
+        str(item.get("job_id", "")): int(item.get("position", 0))
+        for item in pending_queue_snapshot()
+        if item.get("job_id")
+    }
     jobs: list[dict] = []
     for job_id in batch.get("job_ids", []):
         job = _job_from_state(str(job_id))
         if not job:
             continue
         job.pop("thread", None)
+        job["queue_position"] = queued_positions.get(str(job_id))
         job["files"] = files_for_output(Path(str(job.get("output_path", ""))), str(job_id))
         jobs.append(job)
     batch["jobs"] = jobs
+    batch["queue_order"] = [
+        str(item.get("job_id", ""))
+        for item in pending_queue_snapshot()
+        if str(item.get("batch_id", "")) == batch_id
+    ]
     batch["gpu"] = gpu_status()
     return batch
 
@@ -2149,6 +2515,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "queue_size": JOB_QUEUE.qsize(),
                     "queued_jobs": queued,
+                    "queue": pending_queue_snapshot(),
                     "active_job": active,
                     "gpu": gpu_status(),
                 }
@@ -2211,6 +2578,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        reorder_match = re.fullmatch(r"/api/batches/([^/]+)/reorder", parsed.path)
+        if reorder_match:
+            batch_id = unquote(reorder_match.group(1))
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length <= 0 or content_length > 2 * 1024 * 1024:
+                    raise ValueError("队列顺序请求无效")
+                payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                requested = payload.get("job_ids") if isinstance(payload, dict) else None
+                if not isinstance(requested, list):
+                    raise ValueError("缺少 job_ids 队列顺序")
+                result = reorder_batch_queue(batch_id, [str(item) for item in requested])
+                if result is None:
+                    self.send_json({"error": "批量任务不存在"}, 404)
+                else:
+                    self.send_json(result)
+            except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                self.send_json({"error": str(exc)}, 400)
+            return
         is_batch = parsed.path == "/api/batches"
         if parsed.path not in {"/api/jobs", "/api/batches"}:
             self.send_json({"error": "Not Found"}, 404)
