@@ -18,6 +18,12 @@
 - 同时保留 Markdown、JSONL、SRT、VTT、逐帧图像和联系图等资料。
 - 页面会显示任务进度、运行日志和 GPU 状态，任务结束后也可以释放显存。
 
+## 批量处理
+
+主页提供“批量导演拉片”和“批量字幕提取”两个入口。一次选择多个视频后，系统会按顺序排队处理；批量任务默认分析每个视频的完整片段。某个视频报错时会记录失败原因并自动跳过，继续下一个视频。
+
+当前流程没有固定时长上限，两小时视频可以直接提交。按每秒一帧计算，约需处理 7,200 张画面，任务耗时和输出占用会明显增加，适合放入队列后台运行。
+
 ## 分析输出
 
 每个任务会生成四份主要文档：
@@ -60,11 +66,24 @@ python3 media_analysis_pipeline.py \
 
 加上 `--max-duration 60` 可以只分析前 60 秒；已有产物时，可以用 `--package-only` 重新整理文档。
 
+## 视觉字幕提取变体
+
+在 WebUI 中选择“视觉字幕提取”或“批量字幕提取”，即可只调用 MiniCPM-V 检查画面中的对白/旁白字幕，不启动 ASR。它会为每秒证据帧生成结构化观察，并合并为可交给其他配音项目的字幕时间轴：
+
+```bash
+python3 subtitle_extraction_pipeline.py \
+  --source /path/to/video.mp4 \
+  --output /path/to/subtitle-output
+```
+
+输出包括 `字幕提取时间轴.json`、`字幕提取时间轴.srt`、`字幕提取时间轴.vtt`、`字幕提取报告.md` 和 `字幕提取原始结果.jsonl`。当前边界依据每秒画面采样估计；JSON 保留逐帧判断，方便后续配音项目复核和微调。
+
 ## 项目结构
 
 ```text
 app/                         WebUI 与视觉分析模块
 media_analysis_pipeline.py   分析流程总控
+subtitle_extraction_pipeline.py  视觉字幕提取流程
 audio_timeline.py            ASR 与 ForcedAligner 流程
 scripts/                     模型链接与服务启动脚本
 deploy/                      GPU 部署配置

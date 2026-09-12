@@ -14,6 +14,7 @@ COPY app ./app
 COPY asset_naming.py ./asset_naming.py
 COPY audio_timeline.py ./audio_timeline.py
 COPY media_analysis_pipeline.py ./media_analysis_pipeline.py
+COPY subtitle_extraction_pipeline.py ./subtitle_extraction_pipeline.py
 COPY vision_pipeline.py ./
 COPY scripts ./scripts
 

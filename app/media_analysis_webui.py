@@ -9,6 +9,7 @@ import json
 import math
 import mimetypes
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -24,11 +25,13 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
 PIPELINE = REPO_ROOT / "media_analysis_pipeline.py"
+SUBTITLE_PIPELINE = REPO_ROOT / "subtitle_extraction_pipeline.py"
 ASSET_ROOT = REPO_ROOT / "assets"
 WEBUI_STATE = Path(os.environ.get("WEBUI_STATE", str(REPO_ROOT / "state")))
 UPLOAD_DIR = WEBUI_STATE / "uploads"
 JOB_STATE_DIR = WEBUI_STATE / "jobs"
 DEFAULT_OUTPUT_ROOT = Path(os.environ.get("MEDIA_OUTPUT_ROOT", str(REPO_ROOT / "outputs")))
+MINICPM_CONTAINER = os.environ.get("MINICPM_CONTAINER", "vision-minicpm")
 ASR_IMAGE = os.environ.get("ASR_IMAGE", "ragflow-qwen-asr:0.0.6")
 MEDIA_TOOL_IMAGE = os.environ.get(
     "MEDIA_TOOL_IMAGE",
@@ -41,7 +44,10 @@ for directory in (UPLOAD_DIR, JOB_STATE_DIR, DEFAULT_OUTPUT_ROOT):
     directory.mkdir(parents=True, exist_ok=True)
 
 JOBS: dict[str, dict] = {}
+BATCHES: dict[str, dict] = {}
 JOBS_LOCK = threading.RLock()
+JOB_QUEUE: queue.Queue[dict[str, object]] = queue.Queue()
+QUEUE_THREAD: threading.Thread | None = None
 # A single process owns the GPU transition ASR -> visual -> packaging.  This
 # prevents two WebUI uploads from stopping/restarting the same VLM container
 # underneath each other.
@@ -234,11 +240,53 @@ HTML = """<!doctype html>
     .range-grid label { margin: 0; color: #9aabc7; font-size: 13px; }
     .range-grid input { width: 100%; padding: 11px 12px; margin-top: 8px; border: 1px solid #2d4268; border-radius: 10px; outline: none; background: #0b1528; color: var(--ink); font-size: 14px; transition: border .2s, box-shadow .2s; }
     .range-grid input:focus { border-color: #7393f6; box-shadow: 0 0 0 4px #3568f233; }
+    .mode-option { margin-top: 20px; }
+    .mode-option label { margin-bottom: 8px; color: #9aabc7; font-size: 13px; }
+    .mode-option select { width: 100%; padding: 11px 12px; border: 1px solid #2d4268; border-radius: 10px; outline: none; background: #0b1528; color: var(--ink); font-size: 14px; transition: border .2s, box-shadow .2s; }
+    .mode-option select:focus { border-color: #7393f6; box-shadow: 0 0 0 4px #3568f233; }
+    .mode-option .small { display: block; margin-top: 7px; }
+    .home-view { margin-top: 20px; }
+    .entry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .entry-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; min-height: 150px; margin: 0; padding: 22px; border: 1px solid #2d4268; border-radius: 17px; background: linear-gradient(135deg, #12213d, #0d182d); color: var(--ink); text-align: left; box-shadow: 0 14px 34px #00000026; }
+    .entry-card:hover { border-color: #7393f6; background: linear-gradient(135deg, #172b51, #111e38); }
+    .entry-icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #6f96ff77; border-radius: 13px; background: #3656a955; color: var(--cyan); font: 800 12px ui-monospace, monospace; }
+    .entry-card.subtitle .entry-icon { border-color: #62e3ff77; background: #1a648055; color: #8ff0ff; }
+    .entry-card.batch .entry-icon { border-style: dashed; }
+    .entry-card.director-batch .entry-icon { border-color: #b79cff88; background: #684e9b44; color: #d6c7ff; }
+    .entry-card.subtitle-batch .entry-icon { border-color: #72d8c688; background: #237d7044; color: #a1f5dd; }
+    .entry-copy strong, .entry-copy span { display: block; }
+    .entry-copy strong { margin-bottom: 7px; font-size: 17px; }
+    .entry-copy span { color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .entry-arrow { color: var(--cyan); font-size: 24px; }
+    .home-note { margin: 14px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .workbench-nav { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 20px 0 14px; }
+    .back-home { width: auto; margin: 0; padding: 8px 13px; border: 1px solid #33486e; background: #111f39; color: #9eafd0; font-size: 12px; box-shadow: none; }
+    .back-home:hover { border-color: #6f96ff; background: #182c50; color: var(--cyan); box-shadow: none; }
+    .entry-label { color: #8192b0; font-size: 12px; }
     .release-option { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; padding: 12px 13px; border: 1px solid #263b60; border-radius: 12px; background: #0e1a30; cursor: pointer; }
     .release-option input { width: 16px; height: 16px; flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--blue); }
     .release-option strong, .release-option small { display: block; }
     .release-option strong { font-size: 12px; }
     .release-option small { margin-top: 4px; color: #8293b0; font-size: 11px; line-height: 1.5; }
+    .batch-help { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed #42608c; border-radius: 10px; color: #8fa4c4; font-size: 12px; line-height: 1.5; }
+    .batch-file-list { display: grid; gap: 6px; max-height: 170px; margin-top: 10px; overflow: auto; }
+    .batch-file-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid #294064; border-radius: 9px; background: #0f1c32; color: #aebdd7; font-size: 11px; }
+    .batch-file-item span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .batch-file-item span:last-child { flex: 0 0 auto; color: #7185a7; font-family: ui-monospace, monospace; }
+    .batch-queue-card { margin-top: 15px; padding-top: 14px; border-top: 1px solid #263b60; }
+    .batch-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; color: #8094b3; font-size: 12px; }
+    .batch-queue-head strong { color: var(--ink); font-size: 13px; }
+    .batch-queue-items { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
+    .batch-job-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #263b60; border-radius: 9px; background: #0f1b31; }
+    .batch-job-index { color: #8298c1; font: 700 10px ui-monospace, monospace; }
+    .batch-job-name { min-width: 0; overflow: hidden; color: #c7d4e9; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .batch-job-status { color: #8fa3c1; font-size: 11px; white-space: nowrap; }
+    .batch-job-links { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: -3px; }
+    .batch-job-links a { color: #8fb1ff; font-size: 10px; }
+    .batch-job-item.done { border-color: #73b99c; background: #effaf5; }
+    .batch-job-item.done .batch-job-name, .batch-job-item.done .batch-job-status { color: #347b62; }
+    .batch-job-item.failed { border-color: #e0a2a2; background: #fff5f5; }
+    .batch-job-item.failed .batch-job-name, .batch-job-item.failed .batch-job-status { color: #ae5555; }
     button { width: 100%; margin-top: 18px; border: 0; border-radius: 11px; padding: 13px 20px; background: linear-gradient(135deg, var(--blue), #5a55e8); color: white; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 18px #3568f233; transition: transform .2s, box-shadow .2s, opacity .2s; }
     button:hover { transform: translateY(-1px); box-shadow: 0 11px 22px #3568f33d; }
     button:disabled { background: #34415c; color: #93a1b9; box-shadow: none; cursor: wait; transform: none; }
@@ -313,7 +361,7 @@ HTML = """<!doctype html>
     .studio-footer span:last-child { color: #7387aa; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
     @media (max-width: 920px) { .studio-grid { grid-template-columns: 1fr; } .studio-sidebar { position: static; grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 720px) { main { width: min(100% - 24px, 1240px); padding-top: 26px; } .hero-row { align-items: flex-start; flex-direction: column; } .brand-lockup { align-items: flex-start; gap: 14px; } .brand-logo { width: 96px; height: 96px; border-radius: 19px; } .hero-stage { align-self: center; margin-top: -8px; } .flow { grid-template-columns: 1fr 1fr; } .preview-top, .timeline-actions { align-items: flex-start; flex-direction: column; } .preview-meta { justify-content: flex-start; } .quick-actions { flex-wrap: wrap; } .studio-sidebar { grid-template-columns: 1fr; } .run-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); } .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 720px) { main { width: min(100% - 24px, 1240px); padding-top: 26px; } .hero-row { align-items: flex-start; flex-direction: column; } .brand-lockup { align-items: flex-start; gap: 14px; } .brand-logo { width: 96px; height: 96px; border-radius: 19px; } .hero-stage { align-self: center; margin-top: -8px; } .entry-grid { grid-template-columns: 1fr; } .flow { grid-template-columns: 1fr 1fr; } .preview-top, .timeline-actions { align-items: flex-start; flex-direction: column; } .preview-meta { justify-content: flex-start; } .quick-actions { flex-wrap: wrap; } .studio-sidebar { grid-template-columns: 1fr; } .run-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); } .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 480px) { main { width: min(100% - 20px, 980px); } .card { padding: 17px; border-radius: 15px; } .range-grid, .flow, .run-plan, .telemetry-grid { grid-template-columns: 1fr; } .local-pill { align-self: flex-start; } }
 
     /* Minimal geometric light theme */
@@ -374,8 +422,33 @@ HTML = """<!doctype html>
     .range-grid label { color: #58778e; }
     .range-grid input { border-color: #cfe2ec; background: #fbfdff; color: #234761; }
     .range-grid input:focus { border-color: #70afd0; box-shadow: 0 0 0 4px #3988c21c; }
+    .mode-option label { color: #58778e; }
+    .mode-option select { border-color: #cfe2ec; background: #fbfdff; color: #234761; }
+    .mode-option select:focus { border-color: #70afd0; box-shadow: 0 0 0 4px #3988c21c; }
+    .entry-card { border-color: #cfe2ec; background: linear-gradient(135deg, #f8fcff, #edf7fc); color: #17354f; box-shadow: 0 12px 28px #4d83a514; }
+    .entry-card:hover { border-color: #70afd0; background: linear-gradient(135deg, #f0faff, #e6f5fb); }
+    .entry-icon { border-color: #acd3e4; background: #e6f5fa; color: #3988b5; }
+    .entry-card.subtitle .entry-icon { border-color: #a8dce5; background: #e8f8f9; color: #3e98a7; }
+    .entry-card.director-batch .entry-icon { border-color: #c8c9eb; background: #f0f0fc; color: #7478b4; }
+    .entry-card.subtitle-batch .entry-icon { border-color: #a8d8cc; background: #eefaf6; color: #428d78; }
+    .entry-copy span, .home-note { color: #718aa0; }
+    .entry-arrow { color: #3988c2; }
+    .back-home { border-color: #cde1eb; background: #f5fbfe; color: #54758b; }
+    .back-home:hover { border-color: #83bdd8; background: #eaf7fc; color: #2b7eae; }
+    .entry-label { color: #718aa0; }
     .release-option { border-color: #d6e7ef; background: #f8fcfe; }
     .release-option small { color: #7891a3; }
+    .batch-help { border-color: #b9d5e2; color: #6f899d; background: #f7fcfe; }
+    .batch-file-item { border-color: #d6e7ef; background: #f7fcfe; color: #4e7187; }
+    .batch-file-item span:last-child { color: #88a0af; }
+    .batch-queue-card { border-top-color: #d6e7ef; }
+    .batch-queue-head { color: #7891a3; }
+    .batch-queue-head strong { color: #244b66; }
+    .batch-job-item { border-color: #d6e7ef; background: #f7fcfe; }
+    .batch-job-index { color: #7797ad; }
+    .batch-job-name { color: #365e75; }
+    .batch-job-status { color: #7891a3; }
+    .batch-job-links a { color: #3b86b6; }
     button { background: linear-gradient(135deg, #3988c2, #5c9ed0); color: #fff; box-shadow: 0 8px 18px #3988c233; }
     button:hover { box-shadow: 0 11px 22px #3988c23d; }
     button:disabled { background: #b5cbd7; color: #edf7fb; }
@@ -439,8 +512,8 @@ HTML = """<!doctype html>
           <img class="brand-logo" src="/assets/brand/yegou-studio-logo.png" alt="野构 Studio 创意标志">
           <div class="brand-copy">
             <div class="brand-name">野构 Studio</div>
-            <h1>视频导演拉片工作台 <span class="title-mark">MEDIA LAB</span></h1>
-            <p class="hint">把视频交给野构 Studio，得到可回看、可下载、可继续加工的视觉与声音时间线。</p>
+            <h1 id="hero-title">视频媒体分析工作台 <span class="title-mark">MEDIA LAB</span></h1>
+            <p id="hero-hint" class="hint">选择一个工作入口，把视频整理成可回看、可下载、可继续加工的资料。</p>
           </div>
         </div>
         <div class="hero-tools">
@@ -449,20 +522,55 @@ HTML = """<!doctype html>
       </div>
     </header>
 
+    <section id="home-view" class="home-view">
+      <div class="entry-grid">
+        <button class="entry-card director" type="button" data-entry-mode="director">
+          <span class="entry-icon">01</span>
+          <span class="entry-copy"><strong>导演拉片分析</strong><span>完整分析视觉、声音、ASR 和时间线，输出导演拉片资料。</span></span>
+          <span class="entry-arrow">→</span>
+        </button>
+        <button class="entry-card subtitle" type="button" data-entry-mode="subtitle">
+          <span class="entry-icon">02</span>
+          <span class="entry-copy"><strong>视觉字幕提取</strong><span>让视觉模型读取画面字幕，输出时间轴给其他项目重配音。</span></span>
+          <span class="entry-arrow">→</span>
+        </button>
+        <button class="entry-card batch director-batch" type="button" data-entry-mode="director-batch">
+          <span class="entry-icon">03</span>
+          <span class="entry-copy"><strong>批量导演拉片</strong><span>一次选择多个视频，按顺序排队完成整片导演拉片。</span></span>
+          <span class="entry-arrow">→</span>
+        </button>
+        <button class="entry-card batch subtitle-batch" type="button" data-entry-mode="subtitle-batch">
+          <span class="entry-icon">04</span>
+          <span class="entry-copy"><strong>批量字幕提取</strong><span>批量读取画面字幕；单个视频报错会自动跳过并继续。</span></span>
+          <span class="entry-arrow">→</span>
+        </button>
+      </div>
+      <p class="home-note">单视频入口支持时间区间；批量入口默认分析每个视频的完整片段，并按队列顺序使用 GPU。</p>
+    </section>
+
+    <div id="workbench-view" hidden>
+    <div class="workbench-nav">
+      <button id="back-home" class="back-home" type="button">← 返回四个入口</button>
+      <span id="entry-label" class="entry-label">导演拉片分析</span>
+    </div>
     <div class="studio-grid">
       <div class="studio-main">
     <section class="card input-card">
       <div class="card-head">
-        <div><div class="section-label">INPUT</div><h2>选择一个视频</h2></div>
-        <span class="tag">默认分析整片</span>
+        <div><div class="section-label">INPUT</div><h2 id="input-title">选择一个视频</h2></div>
+        <span id="mode-tag" class="tag">导演拉片模式</span>
       </div>
       <form id="upload-form">
         <label class="upload-zone" id="drop-zone" for="video">
           <input id="video" name="video" type="file" accept="video/*" required>
           <span class="upload-icon">↑</span>
-          <span class="upload-copy"><strong>点击选择，或把视频拖到这里</strong><span>支持 MP4、MOV、MKV、AVI、WebM 等常见格式</span></span>
+          <span class="upload-copy"><strong id="upload-title">点击选择，或把视频拖到这里</strong><span id="upload-copy">支持 MP4、MOV、MKV、AVI、WebM 等常见格式</span></span>
         </label>
         <div id="file-name" class="file-name">尚未选择视频</div>
+        <div id="batch-file-list" class="batch-file-list" hidden></div>
+        <input id="analysis-mode" type="hidden" value="director">
+        <span id="mode-help" class="small" hidden>完整处理视觉、ASR、ForcedAligner，并输出导演拉片资料。</span>
+        <p id="batch-help" class="batch-help" hidden>批量模式默认分析每个视频的完整片段；同一批视频按顺序排队，单个视频失败会自动跳过。</p>
         <div id="preview-panel" class="preview-panel" hidden>
           <div class="preview-top">
             <div><div class="section-label">VISUAL RANGE</div><h3>可视时间轴</h3></div>
@@ -497,7 +605,7 @@ HTML = """<!doctype html>
           </div>
           <p class="small">时间轴只在浏览器本地预览，不会上传额外数据。拖动后下方秒数会同步更新；不设结束点仍表示分析到视频结尾。</p>
         </div>
-        <div class="range-grid">
+        <div id="range-controls" class="range-grid">
           <label for="start-sec">开始秒
             <input id="start-sec" type="number" min="0" step="0.1" placeholder="0">
           </label>
@@ -508,11 +616,11 @@ HTML = """<!doctype html>
         <p class="small">例如填写 20 和 40，只分析原视频的 00:20–00:40。截取片段内的报告时间码从 00:00 重新计时，任务信息中会保留原视频区间。</p>
         <label class="release-option" for="release-gpu">
           <input id="release-gpu" type="checkbox" checked>
-          <span><strong>分析完成后释放显存</strong><small>默认停止 MiniCPM-V 容器，释放 GPU；取消勾选可保留热模型以加快下一次任务。</small></span>
+          <span><strong>分析完成后释放显存</strong><small id="release-help">默认停止 MiniCPM-V 容器，释放 GPU；取消勾选可保留热模型以加快下一次任务。</small></span>
         </label>
         <button id="start" type="submit">开始分析</button>
       </form>
-      <p class="small">开始秒留空按 0 处理，结束秒留空按视频结尾处理。长视频会分批执行，页面显示的是阶段级大概进度。</p>
+      <p id="range-note" class="small">开始秒留空按 0 处理，结束秒留空按视频结尾处理。长视频会分批执行，页面显示的是阶段级大概进度。</p>
     </section>
       </div>
       <aside class="studio-sidebar">
@@ -535,19 +643,19 @@ HTML = """<!doctype html>
               <div class="model-info"><small>时间对齐 · ForcedAligner</small><strong>Qwen3-ForcedAligner-0.6B</strong><em>词级时间戳与字幕轨</em></div>
             </div>
           </div>
-          <div class="gpu-note">模型按 ASR → 视觉 → 整理顺序切换，尽量避免多个大模型同时占用显存。</div>
+          <div id="gpu-note" class="gpu-note">模型按 ASR → 视觉 → 整理顺序切换，尽量避免多个大模型同时占用显存。</div>
         </section>
         <section class="card delivery-card">
           <div class="side-head">
             <div><div class="section-label">DELIVERY</div><h2>输出工作包</h2></div>
             <span class="tag">V1</span>
           </div>
-          <div class="delivery-stat"><strong>04</strong><span>份主文档<br>可下载、可继续加工</span></div>
+          <div class="delivery-stat"><strong id="delivery-count">04</strong><span id="delivery-copy">份主文档<br>可下载、可继续加工</span></div>
           <div class="delivery-list">
-            <div class="delivery-item">纯视觉分析</div>
-            <div class="delivery-item">纯 ASR 与时间戳</div>
-            <div class="delivery-item">代码综合时间线</div>
-            <div class="delivery-item">最终导演分析模板</div>
+            <div id="delivery-item-1" class="delivery-item">纯视觉分析</div>
+            <div id="delivery-item-2" class="delivery-item">纯 ASR 与时间戳</div>
+            <div id="delivery-item-3" class="delivery-item">代码综合时间线</div>
+            <div id="delivery-item-4" class="delivery-item">最终导演分析模板</div>
           </div>
           <div class="path-label">DEFAULT OUTPUT</div>
           <div class="side-path">由 MEDIA_OUTPUT_ROOT 配置</div>
@@ -561,11 +669,11 @@ HTML = """<!doctype html>
       </div>
       <div class="flow">
         <div class="flow-item"><span class="flow-num">01</span><strong>截取范围</strong><span>按开始秒和结束秒生成分析片段。</span></div>
-        <div class="flow-item"><span class="flow-num">02</span><strong>声音时间线</strong><span>ASR + ForcedAligner 生成旁白和时间戳。</span></div>
-        <div class="flow-item"><span class="flow-num">03</span><strong>视觉拉片</strong><span>1 秒高清帧、20 秒联系图、5 秒细节组。</span></div>
-        <div class="flow-item"><span class="flow-num">04</span><strong>整理下载</strong><span>输出四份主文档及 SRT/VTT 字幕。</span></div>
+        <div class="flow-item"><span class="flow-num">02</span><strong id="flow-step-2-title">声音时间线</strong><span id="flow-step-2-copy">ASR + ForcedAligner 生成旁白和时间戳。</span></div>
+        <div class="flow-item"><span class="flow-num">03</span><strong id="flow-step-3-title">视觉拉片</strong><span id="flow-step-3-copy">1 秒高清帧、20 秒联系图、5 秒细节组。</span></div>
+        <div class="flow-item"><span class="flow-num">04</span><strong id="flow-step-4-title">整理下载</strong><span id="flow-step-4-copy">输出四份主文档及 SRT/VTT 字幕。</span></div>
       </div>
-      <p class="small">前三份是可复核的机器产物；第四份是解释层。没有额外提交最终分析时，第四份会显示待处理模板。</p>
+      <p id="pipeline-note" class="small">前三份是可复核的机器产物；第四份是解释层。没有额外提交最终分析时，第四份会显示待处理模板。</p>
     </section>
 
     <section id="progress-card" class="card" hidden>
@@ -581,9 +689,9 @@ HTML = """<!doctype html>
       <div id="phase" class="small">尚未开始</div>
       <div class="run-plan" aria-label="任务计划">
         <div class="plan-step" data-plan-step="0"><span class="plan-index">01</span><strong>准备与截取</strong><span>生成分析输入</span></div>
-        <div class="plan-step" data-plan-step="1"><span class="plan-index">02</span><strong>ASR + 对齐</strong><span>语音与词级时间戳</span></div>
-        <div class="plan-step" data-plan-step="2"><span class="plan-index">03</span><strong>视觉拉片</strong><span>1fps / 20秒 / 5秒</span></div>
-        <div class="plan-step" data-plan-step="3"><span class="plan-index">04</span><strong>综合打包</strong><span>四份文档与字幕</span></div>
+        <div class="plan-step" data-plan-step="1"><span class="plan-index">02</span><strong id="plan-title-1">ASR + 对齐</strong><span id="plan-copy-1">语音与词级时间戳</span></div>
+        <div class="plan-step" data-plan-step="2"><span class="plan-index">03</span><strong id="plan-title-2">视觉拉片</strong><span id="plan-copy-2">1fps / 20秒 / 5秒</span></div>
+        <div class="plan-step" data-plan-step="3"><span class="plan-index">04</span><strong id="plan-title-3">综合打包</strong><span id="plan-copy-3">四份文档与字幕</span></div>
       </div>
       <div class="telemetry-grid">
         <div class="telemetry-item"><span class="telemetry-label">GPU 利用率</span><strong id="gpu-utilization" class="telemetry-value">--</strong><span id="gpu-utilization-sub" class="telemetry-sub">等待采样</span></div>
@@ -592,6 +700,10 @@ HTML = """<!doctype html>
         <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
       </div>
       <pre id="logs"></pre>
+      <section id="batch-queue-card" class="batch-queue-card" hidden>
+        <div class="batch-queue-head"><strong>批量队列</strong><span id="batch-queue-count">0 / 0</span></div>
+        <div id="batch-queue-items" class="batch-queue-items"></div>
+      </section>
     </section>
 
     <section id="result-card" class="card" hidden>
@@ -602,6 +714,7 @@ HTML = """<!doctype html>
       <p id="error" class="error"></p>
     </section>
     <div class="studio-footer"><span>野构 STUDIO · MEDIA ANALYSIS LAB</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
+    </div>
   </main>
   <script>
     const form = document.getElementById("upload-form");
@@ -630,6 +743,39 @@ HTML = """<!doctype html>
     const startSec = document.getElementById("start-sec");
     const endSec = document.getElementById("end-sec");
     const releaseGpu = document.getElementById("release-gpu");
+    const analysisMode = document.getElementById("analysis-mode");
+    const inputTitle = document.getElementById("input-title");
+    const modeTag = document.getElementById("mode-tag");
+    const modeHelp = document.getElementById("mode-help");
+    const batchHelp = document.getElementById("batch-help");
+    const rangeNote = document.getElementById("range-note");
+    const releaseHelp = document.getElementById("release-help");
+    const uploadTitle = document.getElementById("upload-title");
+    const uploadCopy = document.getElementById("upload-copy");
+    const batchFileList = document.getElementById("batch-file-list");
+    const batchQueueCard = document.getElementById("batch-queue-card");
+    const batchQueueCount = document.getElementById("batch-queue-count");
+    const batchQueueItems = document.getElementById("batch-queue-items");
+    const homeView = document.getElementById("home-view");
+    const workbenchView = document.getElementById("workbench-view");
+    const backHome = document.getElementById("back-home");
+    const entryLabel = document.getElementById("entry-label");
+    const entryButtons = Array.from(document.querySelectorAll("[data-entry-mode]"));
+    const heroTitle = document.getElementById("hero-title");
+    const heroHint = document.getElementById("hero-hint");
+    const gpuNote = document.getElementById("gpu-note");
+    const deliveryCount = document.getElementById("delivery-count");
+    const deliveryCopy = document.getElementById("delivery-copy");
+    const deliveryItems = [1, 2, 3, 4].map(function(index) { return document.getElementById("delivery-item-" + index); });
+    const flowStep2Title = document.getElementById("flow-step-2-title");
+    const flowStep2Copy = document.getElementById("flow-step-2-copy");
+    const flowStep3Title = document.getElementById("flow-step-3-title");
+    const flowStep3Copy = document.getElementById("flow-step-3-copy");
+    const flowStep4Title = document.getElementById("flow-step-4-title");
+    const flowStep4Copy = document.getElementById("flow-step-4-copy");
+    const pipelineNote = document.getElementById("pipeline-note");
+    const planTitles = [1, 2, 3].map(function(index) { return document.getElementById("plan-title-" + index); });
+    const planCopies = [1, 2, 3].map(function(index) { return document.getElementById("plan-copy-" + index); });
     const dropZone = document.getElementById("drop-zone");
     const fileName = document.getElementById("file-name");
     const previewPanel = document.getElementById("preview-panel");
@@ -651,6 +797,147 @@ HTML = """<!doctype html>
     let timer = null;
     let previewUrl = null;
     let videoDuration = 0;
+    let batchMode = false;
+    let batchPollTimer = null;
+
+    function updateModePresentation() {
+      const subtitle = analysisMode.value === "subtitle";
+      const singleLabel = subtitle ? "视觉字幕提取" : "导演拉片分析";
+      const batchLabel = subtitle ? "批量字幕提取" : "批量导演拉片";
+      inputTitle.textContent = batchMode ? "选择多个视频" : "选择一个视频";
+      modeTag.textContent = batchMode ? batchLabel + "模式" : singleLabel + "模式";
+      entryLabel.textContent = batchMode ? batchLabel : singleLabel;
+      heroTitle.firstChild.textContent = batchMode
+        ? (subtitle ? "批量字幕提取工作台 " : "批量导演拉片工作台 ")
+        : (subtitle ? "视觉字幕提取工作台 " : "视频导演拉片工作台 ");
+      heroHint.textContent = batchMode
+        ? "一次选择多个视频，按顺序排队处理；单个视频报错后会自动跳过。"
+        : (subtitle
+          ? "让视觉模型读取画面中的对白字幕，输出时间轴供其他项目重新配音。"
+          : "把视频拆成画面、声音和时间线，方便回看、复盘与继续创作。");
+      uploadTitle.textContent = batchMode ? "点击选择多个视频，或把视频拖到这里" : "点击选择，或把视频拖到这里";
+      uploadCopy.textContent = batchMode
+        ? "同一批视频默认全部分析整片，按选择顺序进入队列。"
+        : "支持 MP4、MOV、MKV、AVI、WebM 等常见格式";
+      fileInput.multiple = batchMode;
+      batchHelp.hidden = !batchMode;
+      batchFileList.hidden = !batchMode;
+      document.getElementById("range-controls").hidden = batchMode;
+      rangeNote.textContent = batchMode
+        ? "批量模式不使用时间区间设置，每个视频都会从 00:00 分析到结尾。"
+        : "开始秒留空按 0 处理，结束秒留空按视频结尾处理。长视频会分批执行，页面显示的是阶段级大概进度。";
+      releaseHelp.textContent = batchMode
+        ? "批量任务会在全部视频完成后统一释放显存；取消勾选可保留热模型。"
+        : "默认停止 MiniCPM-V 容器，释放 GPU；取消勾选可保留热模型以加快下一次任务。";
+      gpuNote.textContent = subtitle
+        ? (batchMode ? "批量字幕任务逐个调用 MiniCPM-V，单个失败不会中断队列。" : "字幕模式只调用 MiniCPM-V，不启动 ASR，完成后可释放显存。")
+        : (batchMode ? "批量任务按顺序切换 ASR 与视觉模型，避免多个大模型同时占用显存。" : "模型按 ASR → 视觉 → 整理顺序切换，尽量避免多个大模型同时占用显存。");
+      modeHelp.textContent = subtitle
+        ? (batchMode ? "批量读取每个视频中的画面字幕，输出各自的 JSON / SRT / VTT。" : "只调用 MiniCPM-V 读取画面字幕，输出 JSON / SRT / VTT，供其他项目重配音。")
+        : (batchMode ? "逐个处理视觉、ASR、ForcedAligner，并为每个视频输出导演拉片资料。" : "完整处理视觉、ASR、ForcedAligner，并输出导演拉片资料。");
+      modeHelp.hidden = false;
+      startButton.textContent = batchMode ? (subtitle ? "加入批量字幕队列" : "加入批量分析队列") : (subtitle ? "开始提取字幕" : "开始分析");
+      flowStep2Title.textContent = subtitle ? "抽取画面" : "声音时间线";
+      flowStep2Copy.textContent = subtitle ? "每秒保留一张可复核的字幕证据帧。" : "ASR + ForcedAligner 生成旁白和时间戳。";
+      flowStep3Title.textContent = subtitle ? "读取字幕" : "视觉拉片";
+      flowStep3Copy.textContent = subtitle ? "视觉模型逐帧判断对白/旁白字幕，排除水印和场景文字。" : "1 秒高清帧、20 秒联系图、5 秒细节组。";
+      flowStep4Title.textContent = subtitle ? "生成时间轴" : "整理下载";
+      flowStep4Copy.textContent = subtitle ? "输出字幕 JSON、SRT、VTT 和原始模型结果。" : "输出四份主文档及 SRT/VTT 字幕。";
+      pipelineNote.textContent = subtitle
+        ? (batchMode ? "每个视频独立生成字幕时间轴；当前视频失败时，队列会继续处理下一个视频。" : "字幕边界依据每秒画面采样估计；JSON 保留逐帧观察，便于在重配音项目中复核和微调。")
+        : (batchMode ? "每个视频独立生成四份主文档；批量队列会记录每个视频的成功或失败状态。" : "前三份是可复核的机器产物；第四份是解释层。没有额外提交最终分析时，第四份会显示待处理模板。");
+      if (batchMode) {
+        resetPreview();
+      }
+      if (subtitle) {
+        deliveryCount.textContent = "06";
+        deliveryCopy.innerHTML = "份字幕交付文件<br>可下载、可继续配音";
+        ["字幕时间轴 JSON", "字幕时间轴 SRT / VTT", "字幕提取报告", "原始结果与分析清单"].forEach(function(text, index) {
+          deliveryItems[index].textContent = text;
+        });
+        planTitles[0].textContent = "视觉抽帧";
+        planCopies[0].textContent = "每秒字幕证据帧";
+        planTitles[1].textContent = "字幕识别";
+        planCopies[1].textContent = "逐帧 JSON 判断";
+        planTitles[2].textContent = "生成时间轴";
+        planCopies[2].textContent = "JSON / SRT / VTT";
+      } else {
+        deliveryCount.textContent = "04";
+        deliveryCopy.innerHTML = "份主文档<br>可下载、可继续加工";
+        ["纯视觉分析", "纯 ASR 与时间戳", "代码综合时间线", "最终导演分析模板"].forEach(function(text, index) {
+          deliveryItems[index].textContent = text;
+        });
+        planTitles[0].textContent = "ASR + 对齐";
+        planCopies[0].textContent = "语音与词级时间戳";
+        planTitles[1].textContent = "视觉拉片";
+        planCopies[1].textContent = "1fps / 20秒 / 5秒";
+        planTitles[2].textContent = "综合打包";
+        planCopies[2].textContent = "四份文档与字幕";
+      }
+    }
+
+    function enterMode(mode, updateUrl = true) {
+      const previousBatchMode = batchMode;
+      batchMode = mode.endsWith("-batch");
+      const baseMode = batchMode ? mode.slice(0, -6) : mode;
+      analysisMode.value = baseMode === "subtitle" ? "subtitle" : "director";
+      if (previousBatchMode !== batchMode) {
+        fileInput.value = "";
+        showSelectedFiles();
+      }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (batchPollTimer) {
+        clearTimeout(batchPollTimer);
+        batchPollTimer = null;
+      }
+      progressCard.hidden = true;
+      resultCard.hidden = true;
+      batchQueueCard.hidden = true;
+      errorBox.textContent = "";
+      updateModePresentation();
+      homeView.hidden = true;
+      workbenchView.hidden = false;
+      if (updateUrl) history.pushState(null, "", "#" + (batchMode ? analysisMode.value + "-batch" : analysisMode.value));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function showHome(updateUrl = true) {
+      homeView.hidden = false;
+      workbenchView.hidden = true;
+      batchMode = false;
+      fileInput.value = "";
+      batchFileList.innerHTML = "";
+      batchFileList.hidden = true;
+      resetPreview();
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (batchPollTimer) {
+        clearTimeout(batchPollTimer);
+        batchPollTimer = null;
+      }
+      heroTitle.firstChild.textContent = "视频媒体分析工作台 ";
+      heroHint.textContent = "选择一个工作入口，把视频整理成可回看、可下载、可继续加工的资料。";
+      if (updateUrl) history.pushState(null, "", window.location.pathname + window.location.search);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function syncRoute() {
+      const mode = window.location.hash.replace("#", "");
+      if (["director", "subtitle", "director-batch", "subtitle-batch"].includes(mode)) enterMode(mode, false);
+      else showHome(false);
+    }
+
+    entryButtons.forEach(function(button) {
+      button.addEventListener("click", function() { enterMode(button.dataset.entryMode); });
+    });
+    backHome.addEventListener("click", function() { showHome(); });
+    window.addEventListener("popstate", syncRoute);
+    syncRoute();
 
     function formatSeconds(value, withTenths = true) {
       if (!Number.isFinite(value)) return withTenths ? "--:--.-" : "--:--";
@@ -768,16 +1055,49 @@ HTML = """<!doctype html>
       videoPreview.load();
     }
 
-    function showSelectedFile(file) {
-      fileName.textContent = file ? "已选择： " + file.name + " · " + formatFileSize(file.size) : "尚未选择视频";
+    function renderBatchFiles(selected) {
+      batchFileList.innerHTML = "";
+      if (!batchMode || !selected.length) {
+        batchFileList.hidden = true;
+        return;
+      }
+      selected.forEach(function(file, index) {
+        const item = document.createElement("div");
+        item.className = "batch-file-item";
+        const name = document.createElement("span");
+        name.textContent = String(index + 1).padStart(2, "0") + " · " + file.name;
+        const size = document.createElement("span");
+        size.textContent = formatFileSize(file.size);
+        item.appendChild(name);
+        item.appendChild(size);
+        batchFileList.appendChild(item);
+      });
+      batchFileList.hidden = false;
+    }
+
+    function showSelectedFiles() {
+      const selected = Array.from(fileInput.files || []);
       startSec.value = "";
       endSec.value = "";
-      if (file) loadPreview(file);
-      else resetPreview();
+      renderBatchFiles(selected);
+      if (!selected.length) {
+        fileName.textContent = "尚未选择视频";
+        resetPreview();
+        return;
+      }
+      if (batchMode) {
+        const totalSize = selected.reduce(function(sum, file) { return sum + file.size; }, 0);
+        fileName.textContent = "已选择 " + selected.length + " 个视频 · " + formatFileSize(totalSize);
+        resetPreview();
+        return;
+      }
+      const file = selected[0];
+      fileName.textContent = "已选择： " + file.name + " · " + formatFileSize(file.size);
+      loadPreview(file);
     }
 
     fileInput.addEventListener("change", function() {
-      showSelectedFile(fileInput.files[0]);
+      showSelectedFiles();
     });
     videoPreview.addEventListener("loadedmetadata", function() {
       videoDuration = Number.isFinite(videoPreview.duration) ? videoPreview.duration : 0;
@@ -829,7 +1149,7 @@ HTML = """<!doctype html>
     dropZone.addEventListener("drop", function(event) {
       if (event.dataTransfer.files.length) {
         fileInput.files = event.dataTransfer.files;
-        showSelectedFile(fileInput.files[0]);
+        showSelectedFiles();
       }
     });
 
@@ -871,9 +1191,15 @@ HTML = """<!doctype html>
     function updatePlan(job, percent) {
       const phaseText = String(job.phase || "");
       let active = 0;
-      if (phaseText.includes("ASR") || phaseText.includes("对齐") || (percent >= 5 && percent < 35)) active = 1;
-      if (phaseText.includes("视觉") || (percent >= 35 && percent < 90)) active = 2;
-      if (phaseText.includes("生成") || phaseText.includes("整理") || percent >= 90) active = 3;
+      if (job.mode === "subtitle") {
+        if (phaseText.includes("抽帧") || phaseText.includes("证据") || (percent >= 5 && percent < 35)) active = 1;
+        if (phaseText.includes("字幕") || (percent >= 35 && percent < 90)) active = 2;
+        if (phaseText.includes("生成") || phaseText.includes("整理") || percent >= 90) active = 3;
+      } else {
+        if (phaseText.includes("ASR") || phaseText.includes("对齐") || (percent >= 5 && percent < 35)) active = 1;
+        if (phaseText.includes("视觉") || (percent >= 35 && percent < 90)) active = 2;
+        if (phaseText.includes("生成") || phaseText.includes("整理") || percent >= 90) active = 3;
+      }
       if (job.status === "done") active = planSteps.length;
       planSteps.forEach(function(step, index) {
         step.classList.toggle("done", index < active || job.status === "done");
@@ -883,8 +1209,9 @@ HTML = """<!doctype html>
 
     function showJob(job) {
       progressCard.hidden = false;
+      batchQueueCard.hidden = true;
       resultCard.hidden = job.status !== "done" && job.status !== "failed";
-      filename.textContent = job.filename || "视频分析任务";
+      filename.textContent = (job.filename || "视频分析任务") + (job.mode === "subtitle" ? " · 视觉字幕提取" : "");
       status.textContent = job.status_label || job.status;
       const percent = Math.max(0, Math.min(100, Number(job.progress) || 0));
       progress.value = percent;
@@ -917,6 +1244,80 @@ HTML = """<!doctype html>
       }
     }
 
+    function batchStatusLabel(job) {
+      if (job.status === "done") return "完成";
+      if (job.status === "failed" || job.status === "cancelled") return "已跳过";
+      if (job.status === "running") return (Number(job.progress) || 0).toFixed(0) + "%";
+      return "排队中";
+    }
+
+    function showBatch(batch) {
+      progressCard.hidden = false;
+      resultCard.hidden = true;
+      batchQueueCard.hidden = false;
+      const total = Number(batch.total) || 0;
+      const completed = Number(batch.completed) || 0;
+      filename.textContent = (batch.mode_label || "批量任务") + " · " + total + " 个视频";
+      status.textContent = batch.status_label || batch.status;
+      const percent = Math.max(0, Math.min(100, Number(batch.progress) || 0));
+      progress.value = percent;
+      progressPercent.textContent = percent.toFixed(0) + "%";
+      phase.textContent = percent.toFixed(0) + "% · " + (batch.phase || "等待任务队列");
+      updatePlan({ mode: batch.mode, status: batch.status === "done" || batch.status === "partial" ? "done" : batch.status, progress: percent, phase: batch.phase }, percent);
+      updateGpu(batch.gpu);
+      batchQueueCount.textContent = completed + " / " + total + " 已完成 · " + (Number(batch.failed) || 0) + " 个失败";
+      batchQueueItems.innerHTML = "";
+      const jobs = Array.isArray(batch.jobs) ? batch.jobs : [];
+      jobs.forEach(function(job, index) {
+        const item = document.createElement("div");
+        item.className = "batch-job-item " + (job.status === "done" ? "done" : (job.status === "failed" || job.status === "cancelled" ? "failed" : ""));
+        const order = document.createElement("span");
+        order.className = "batch-job-index";
+        order.textContent = String(index + 1).padStart(2, "0");
+        const name = document.createElement("span");
+        name.className = "batch-job-name";
+        name.title = job.filename || "视频";
+        name.textContent = job.filename || "视频";
+        const state = document.createElement("span");
+        state.className = "batch-job-status";
+        state.textContent = batchStatusLabel(job);
+        item.appendChild(order);
+        item.appendChild(name);
+        item.appendChild(state);
+        if (job.status === "done" && Array.isArray(job.files) && job.files.length) {
+          const links = document.createElement("div");
+          links.className = "batch-job-links";
+          job.files.slice(0, 4).forEach(function(file) {
+            const link = document.createElement("a");
+            link.href = file.url;
+            link.download = file.name;
+            link.textContent = file.name.split("/").pop();
+            links.appendChild(link);
+          });
+          item.appendChild(links);
+        }
+        batchQueueItems.appendChild(item);
+      });
+      const logLines = [
+        "批量任务：" + (batch.mode_label || "视频分析"),
+        "进度：" + completed + " / " + total + "，失败：" + (Number(batch.failed) || 0) + "（失败视频自动跳过）",
+      ];
+      jobs.forEach(function(job, index) {
+        logLines.push(String(index + 1).padStart(2, "0") + " · " + (job.filename || "视频") + " · " + batchStatusLabel(job));
+        if (job.error) logLines.push("   错误：" + job.error);
+      });
+      logs.textContent = logLines.join("\n");
+      logs.scrollTop = logs.scrollHeight;
+      errorBox.textContent = Number(batch.failed) > 0 ? (Number(batch.failed) + " 个视频处理失败，已跳过，其余任务继续执行。") : "";
+      if (batch.status === "done" || batch.status === "partial") {
+        startButton.disabled = false;
+        if (batchPollTimer) {
+          clearTimeout(batchPollTimer);
+          batchPollTimer = null;
+        }
+      }
+    }
+
     async function poll(jobId) {
       try {
         const response = await fetch("/api/jobs/" + encodeURIComponent(jobId));
@@ -931,26 +1332,48 @@ HTML = """<!doctype html>
       }
     }
 
+    async function pollBatch(batchId) {
+      try {
+        const response = await fetch("/api/batches/" + encodeURIComponent(batchId));
+        const batch = await response.json();
+        if (!response.ok) throw new Error(batch.error || "读取批量任务失败");
+        showBatch(batch);
+        if (batch.status !== "done" && batch.status !== "partial") {
+          batchPollTimer = setTimeout(function() { pollBatch(batchId); }, 1500);
+        }
+      } catch (error) {
+        errorBox.textContent = String(error);
+        batchPollTimer = setTimeout(function() { pollBatch(batchId); }, 3000);
+      }
+    }
+
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
       if (!fileInput.files.length) return;
       startButton.disabled = true;
       progressCard.hidden = false;
       resultCard.hidden = true;
+      batchQueueCard.hidden = !batchMode;
       logs.textContent = "正在上传视频…";
       try {
         const body = new FormData();
-        body.append("video", fileInput.files[0]);
+        Array.from(fileInput.files).forEach(function(file) { body.append("video", file); });
         const query = new URLSearchParams();
-        if (startSec.value.trim()) query.set("start_sec", startSec.value.trim());
-        if (endSec.value.trim()) query.set("end_sec", endSec.value.trim());
+        if (!batchMode && startSec.value.trim()) query.set("start_sec", startSec.value.trim());
+        if (!batchMode && endSec.value.trim()) query.set("end_sec", endSec.value.trim());
+        query.set("mode", analysisMode.value);
         query.set("release_gpu", releaseGpu.checked ? "1" : "0");
-        const target = "/api/jobs" + (query.toString() ? "?" + query.toString() : "");
+        const target = (batchMode ? "/api/batches" : "/api/jobs") + (query.toString() ? "?" + query.toString() : "");
         const response = await fetch(target, { method: "POST", body: body });
-        const job = await response.json();
-        if (!response.ok) throw new Error(job.error || "创建任务失败");
-        showJob(job);
-        poll(job.id);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "创建任务失败");
+        if (batchMode) {
+          showBatch(payload);
+          pollBatch(payload.id);
+        } else {
+          showJob(payload);
+          poll(payload.id);
+        }
       } catch (error) {
         startButton.disabled = false;
         resultCard.hidden = false;
@@ -985,6 +1408,110 @@ def save_job_state(job: dict) -> None:
     )
 
 
+def save_batch_state(batch: dict) -> None:
+    (JOB_STATE_DIR / f"batch_{batch['id']}.json").write_text(
+        json.dumps(batch, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def load_batch_state(batch_id: str) -> dict | None:
+    state_path = JOB_STATE_DIR / f"batch_{batch_id}.json"
+    if not state_path.is_file():
+        return None
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _job_from_state(job_id: str) -> dict | None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is not None:
+            return dict(job)
+    state_path = JOB_STATE_DIR / f"{job_id}.json"
+    if not state_path.is_file():
+        return None
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def refresh_batch(batch_id: str) -> dict | None:
+    with JOBS_LOCK:
+        batch = BATCHES.get(batch_id)
+        if batch is None:
+            batch = load_batch_state(batch_id)
+            if batch is None:
+                return None
+            BATCHES[batch_id] = batch
+        previous = {
+            key: batch.get(key)
+            for key in ("status", "status_label", "phase", "progress", "completed", "succeeded", "failed")
+        }
+        job_ids = [str(item) for item in batch.get("job_ids", [])]
+        jobs = []
+        for job_id in job_ids:
+            job = _job_from_state(job_id)
+            if job is not None:
+                jobs.append(job)
+        statuses = [str(item.get("status", "queued")) for item in jobs]
+        total = int(batch.get("total", len(job_ids)) or len(job_ids))
+        completed = sum(status in {"done", "failed", "cancelled"} for status in statuses)
+        succeeded = sum(status == "done" for status in statuses)
+        failed = sum(status in {"failed", "cancelled"} for status in statuses)
+        progress_values = [max(0, min(100, int(item.get("progress", 0) or 0))) for item in jobs]
+        progress = round(sum(progress_values) / total) if total else 100
+        if completed >= total and total:
+            batch["status"] = "done" if failed == 0 else "partial"
+            batch["status_label"] = "全部完成" if failed == 0 else "部分完成"
+            batch["phase"] = "批量任务完成"
+            batch["progress"] = 100
+            batch["current_job_id"] = ""
+        elif any(status == "running" for status in statuses):
+            batch["status"] = "running"
+            batch["status_label"] = "处理中"
+            batch["phase"] = "正在处理队列"
+            batch["progress"] = progress
+        else:
+            batch["status"] = "queued"
+            batch["status_label"] = "排队中"
+            batch["phase"] = "等待任务队列"
+            batch["progress"] = progress
+        batch["completed"] = completed
+        batch["succeeded"] = succeeded
+        batch["failed"] = failed
+        batch["queue_size"] = JOB_QUEUE.qsize()
+        current = {
+            key: batch.get(key)
+            for key in ("status", "status_label", "phase", "progress", "completed", "succeeded", "failed")
+        }
+        if current != previous:
+            save_batch_state(batch)
+        return dict(batch)
+
+
+def batch_snapshot(batch_id: str) -> dict | None:
+    batch = refresh_batch(batch_id)
+    if batch is None:
+        return None
+    jobs: list[dict] = []
+    for job_id in batch.get("job_ids", []):
+        job = _job_from_state(str(job_id))
+        if not job:
+            continue
+        job.pop("thread", None)
+        job["files"] = files_for_output(Path(str(job.get("output_path", ""))), str(job_id))
+        jobs.append(job)
+    batch["jobs"] = jobs
+    batch["gpu"] = gpu_status()
+    return batch
+
+
 def update_job(job_id: str, **values: object) -> dict:
     with JOBS_LOCK:
         job = JOBS[job_id]
@@ -1008,12 +1535,7 @@ def add_log(job_id: str, message: str, progress: int | None = None, phase: str |
         save_job_state(snapshot)
 
 
-def files_for_job(job_id: str) -> list[dict[str, str]]:
-    with JOBS_LOCK:
-        job = JOBS.get(job_id)
-        if not job:
-            return []
-        output = Path(job["output_path"])
+def files_for_output(output: Path, job_id: str) -> list[dict[str, str]]:
     names = [
         "00_任务参数.md",
         "01_纯视觉分析.md",
@@ -1025,6 +1547,12 @@ def files_for_job(job_id: str) -> list[dict[str, str]]:
         "分析清单.json",
         "audio_index.md",
         "audio_records.jsonl",
+        "字幕提取任务信息.md",
+        "字幕提取时间轴.json",
+        "字幕提取时间轴.srt",
+        "字幕提取时间轴.vtt",
+        "字幕提取原始结果.jsonl",
+        "字幕提取报告.md",
     ]
     result = []
     for name in names:
@@ -1045,8 +1573,27 @@ def files_for_job(job_id: str) -> list[dict[str, str]]:
     return result
 
 
+def files_for_job(job_id: str) -> list[dict[str, str]]:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            return []
+        output = Path(job["output_path"])
+    return files_for_output(output, job_id)
+
+
 def update_progress_from_line(job_id: str, line: str) -> None:
-    if "阶段 1/3 完成" in line:
+    if "阶段 1/2" in line:
+        add_log(job_id, line, 25, "视觉字幕：抽取证据帧")
+    elif "已抽取" in line and "字幕证据帧" in line:
+        add_log(job_id, line, 25, "视觉字幕：抽取证据帧")
+    elif "字幕批次完成" in line:
+        match = re.search(r"进度\s*[=:：]\s*(\d+)%", line)
+        batch_progress = int(match.group(1)) if match else 0
+        add_log(job_id, line, min(90, 25 + round(batch_progress * 0.65)), "视觉字幕：识别字幕")
+    elif "阶段 2/2" in line and "字幕" in line:
+        add_log(job_id, line, 94, "视觉字幕：生成时间轴")
+    elif "阶段 1/3 完成" in line:
         add_log(job_id, line, 32, "ASR 与 ForcedAligner 完成")
     elif "阶段 1/3" in line:
         add_log(job_id, line, 5, "ASR 与 ForcedAligner")
@@ -1143,13 +1690,14 @@ def run_job(
     output: Path,
     start_sec: float,
     end_sec: float | None,
+    mode: str,
     release_gpu_after: bool,
 ) -> None:
     if ANALYSIS_LOCK.locked():
         add_log(job_id, "已有任务占用 GPU，当前任务进入队列。", 0, "排队等待 GPU")
     with ANALYSIS_LOCK:
         add_log(job_id, "已获得 GPU 分析资源，按计划开始执行。", 1, "准备中")
-        _run_job(job_id, source, original, output, start_sec, end_sec, release_gpu_after)
+        _run_job(job_id, source, original, output, start_sec, end_sec, mode, release_gpu_after)
 
 
 def _run_job(
@@ -1159,9 +1707,11 @@ def _run_job(
     output: Path,
     start_sec: float,
     end_sec: float | None,
+    mode: str,
     release_gpu_after: bool,
 ) -> None:
-    add_log(job_id, "任务已创建，准备调用固定分析流程。", 1, "准备中")
+    mode_label = "视觉字幕提取变体" if mode == "subtitle" else "固定导演拉片流程"
+    add_log(job_id, f"任务已创建，准备调用{mode_label}。", 1, "准备中")
     try:
         analysis_source = source
         if start_sec > 0 or end_sec is not None:
@@ -1188,6 +1738,8 @@ def _run_job(
             add_log(job_id, "未设置截取区间，将分析整部视频。", 3, "准备分析")
 
         end_label = f"{end_sec:.3f}" if end_sec is not None else "视频结尾"
+        job_config = _job_from_state(job_id) or {}
+        report_release_gpu = bool(job_config.get("release_gpu_after", release_gpu_after))
         (output / "00_任务参数.md").write_text(
             "\n".join(
                 [
@@ -1197,8 +1749,9 @@ def _run_job(
                     f"- 原始上传路径：{source}",
                     f"- 分析起始秒：{start_sec:.3f}",
                     f"- 分析结束秒：{end_label}",
-                    f"- 分析完成后释放显存：{'是' if release_gpu_after else '否'}",
-                    "- 输出时间码口径：以本次分析片段为 00:00 起点；原始视频区间保留在本文件。",
+                    f"- 分析模式：{'视觉字幕提取（用于后续重配音）' if mode == 'subtitle' else '导演拉片（视觉 + ASR + ForcedAligner）'}",
+                    f"- 分析完成后释放显存：{'是' if report_release_gpu else '否'}",
+                    "- 输出时间码口径：字幕提取模式输出原视频时间；导演拉片模式的报告时间码以分析片段为 00:00 起点。",
                     "",
                 ]
             ),
@@ -1208,14 +1761,26 @@ def _run_job(
         add_log(job_id, f"准备阶段异常：{type(exc).__name__}: {exc}")
         update_job(job_id, status="failed", status_label="失败", error=str(exc))
         return
-    command = [
-        "python3",
-        str(PIPELINE),
-        "--source",
-        str(analysis_source),
-        "--output",
-        str(output),
-    ]
+    if mode == "subtitle":
+        command = [
+            "python3",
+            str(SUBTITLE_PIPELINE),
+            "--source",
+            str(analysis_source),
+            "--output",
+            str(output),
+            "--time-offset",
+            f"{start_sec:.3f}",
+        ]
+    else:
+        command = [
+            "python3",
+            str(PIPELINE),
+            "--source",
+            str(analysis_source),
+            "--output",
+            str(output),
+        ]
     command.append("--release-gpu-after" if release_gpu_after else "--keep-gpu-after")
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -1240,16 +1805,191 @@ def _run_job(
             add_log(job_id, f"分析进程退出，代码 {return_code}。")
             update_job(job_id, status="failed", status_label="失败", error=f"分析进程退出码：{return_code}")
             return
-        add_log(job_id, "四份主文档已生成。", 100, "完成")
+        add_log(job_id, "视觉字幕时间轴已生成。" if mode == "subtitle" else "四份主文档已生成。", 100, "完成")
         update_job(job_id, status="done", status_label="完成", progress=100, files=files_for_job(job_id))
     except Exception as exc:
         add_log(job_id, f"任务异常：{type(exc).__name__}: {exc}")
         update_job(job_id, status="failed", status_label="失败", error=str(exc))
 
 
-def create_upload(handler: BaseHTTPRequestHandler, job_id: str) -> tuple[str, Path]:
+def stop_visual_service() -> None:
+    try:
+        subprocess.run(
+            ["docker", "stop", MINICPM_CONTAINER],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+
+
+def finish_batch_item(batch_id: str, job_id: str) -> None:
+    job = _job_from_state(job_id)
+    if job and job.get("status") in {"failed", "cancelled"}:
+        add_log(job_id, "当前视频分析失败，已跳过；批量队列继续处理下一个视频。")
+    batch = refresh_batch(batch_id)
+    if not batch or int(batch.get("completed", 0)) < int(batch.get("total", 0)):
+        return
+    should_release = False
+    with JOBS_LOCK:
+        current = BATCHES.get(batch_id)
+        if current and current.get("release_gpu_after") and not current.get("gpu_released"):
+            current["gpu_released"] = True
+            current["phase"] = "正在释放 GPU 显存"
+            save_batch_state(current)
+            should_release = True
+    if should_release:
+        add_log(job_id, "批量任务已完成，正在释放 GPU 显存。", 100, "释放 GPU 显存")
+        stop_visual_service()
+        with JOBS_LOCK:
+            current = BATCHES.get(batch_id)
+            if current:
+                current["phase"] = "批量任务完成"
+                save_batch_state(current)
+
+
+def analysis_queue_worker() -> None:
+    while True:
+        task = JOB_QUEUE.get()
+        job_id = str(task.get("job_id", ""))
+        batch_id = str(task.get("batch_id", "")) or None
+        try:
+            if batch_id:
+                job = _job_from_state(job_id) or {}
+                add_log(
+                    job_id,
+                    f"批量队列开始第 {job.get('batch_index', '?')} / {job.get('batch_total', '?')} 个视频。",
+                    0,
+                    "批量队列处理中",
+                )
+                with JOBS_LOCK:
+                    batch = BATCHES.get(batch_id)
+                    if batch:
+                        batch["current_job_id"] = job_id
+                        batch["status"] = "running"
+                        batch["status_label"] = "处理中"
+                        batch["phase"] = "正在处理队列"
+                        save_batch_state(batch)
+            run_job(
+                job_id,
+                Path(str(task["source"])),
+                str(task["original"]),
+                Path(str(task["output"])),
+                float(task.get("start_sec", 0.0)),
+                task.get("end_sec"),
+                str(task.get("mode", "director")),
+                bool(task.get("release_gpu_after", True)),
+            )
+        except Exception as exc:
+            add_log(job_id, f"队列任务异常：{type(exc).__name__}: {exc}")
+            if job_id in JOBS:
+                update_job(job_id, status="failed", status_label="失败", error=str(exc))
+        finally:
+            final_job = _job_from_state(job_id)
+            if final_job and final_job.get("status") not in {"done", "failed", "cancelled"}:
+                update_job(job_id, status="failed", status_label="失败", error="任务未正常结束")
+            if batch_id:
+                finish_batch_item(batch_id, job_id)
+            JOB_QUEUE.task_done()
+
+
+def start_queue_worker() -> None:
+    global QUEUE_THREAD
+    if QUEUE_THREAD and QUEUE_THREAD.is_alive():
+        return
+    QUEUE_THREAD = threading.Thread(
+        target=analysis_queue_worker,
+        name="media-analysis-queue",
+        daemon=True,
+    )
+    QUEUE_THREAD.start()
+
+
+class MultipartReader:
+    def __init__(self, handler: BaseHTTPRequestHandler, content_length: int, boundary: bytes) -> None:
+        self.handler = handler
+        self.remaining = content_length
+        self.boundary = boundary
+        self.pending = bytearray()
+
+    def read(self, size: int) -> bytes:
+        if self.pending:
+            data = bytes(self.pending[:size])
+            del self.pending[:size]
+            return data
+        if self.remaining <= 0:
+            return b""
+        data = self.handler.rfile.read(min(size, self.remaining))
+        if not data:
+            raise ValueError("上传过程中连接中断")
+        self.remaining -= len(data)
+        return data
+
+    def readline(self, max_size: int = 128 * 1024) -> bytes:
+        line = bytearray()
+        while len(line) < max_size:
+            chunk = self.read(4096)
+            if not chunk:
+                return bytes(line)
+            newline = chunk.find(b"\n")
+            if newline < 0:
+                line.extend(chunk)
+                continue
+            line.extend(chunk[: newline + 1])
+            self.pending[:0] = chunk[newline + 1 :]
+            return bytes(line)
+        raise ValueError("multipart 请求头过长")
+
+    def stream_part(self, target: Path | None, marker: bytes) -> bool:
+        buffer = bytearray()
+        stream = target.open("wb") if target else None
+        try:
+            while True:
+                chunk = self.read(1024 * 1024)
+                if not chunk:
+                    raise ValueError("上传数据中没有结束边界")
+                buffer.extend(chunk)
+                position = buffer.find(marker)
+                if position < 0:
+                    keep = len(marker) + 2
+                    if len(buffer) > keep:
+                        if stream:
+                            stream.write(buffer[:-keep])
+                        del buffer[:-keep]
+                    continue
+                if stream:
+                    stream.write(buffer[:position])
+                tail = bytearray(buffer[position + len(marker) :])
+                while len(tail) < 2:
+                    extra = self.read(4096)
+                    if not extra:
+                        raise ValueError("multipart 边界不完整")
+                    tail.extend(extra)
+                if tail.startswith(b"--"):
+                    rest = tail[2:]
+                    if rest.startswith(b"\r\n"):
+                        rest = rest[2:]
+                    elif rest.startswith(b"\n"):
+                        rest = rest[1:]
+                    self.pending[:0] = rest
+                    return True
+                if tail.startswith(b"\r\n"):
+                    self.pending[:0] = tail[2:]
+                    return False
+                if tail.startswith(b"\n"):
+                    self.pending[:0] = tail[1:]
+                    return False
+                raise ValueError("无法解析 multipart 边界")
+        finally:
+            if stream:
+                stream.close()
+
+
+def create_uploads(handler: BaseHTTPRequestHandler, upload_id: str) -> list[tuple[str, Path]]:
     content_type = handler.headers.get("Content-Type", "")
-    match = re.search(r"boundary=([^;]+)", content_type)
+    match = re.search(r"boundary=(?:\"([^\"]+)\"|([^;]+))", content_type)
     if "multipart/form-data" not in content_type or not match:
         raise ValueError("请求不是 multipart/form-data")
     try:
@@ -1259,58 +1999,111 @@ def create_upload(handler: BaseHTTPRequestHandler, job_id: str) -> tuple[str, Pa
     if content_length <= 0 or content_length > MAX_UPLOAD_BYTES:
         raise ValueError("上传文件为空或超过 20GB 限制")
 
-    boundary = match.group(1).strip().strip('"').encode("utf-8")
+    boundary = (match.group(1) or match.group(2) or "").strip().encode("utf-8")
+    reader = MultipartReader(handler, content_length, boundary)
+    first_line = reader.readline().rstrip(b"\r\n")
     first_boundary = b"--" + boundary
-    consumed = 0
-    first_line = handler.rfile.readline()
-    consumed += len(first_line)
-    if first_line.rstrip(b"\r\n") != first_boundary:
+    if first_line != first_boundary:
         raise ValueError("无法读取上传边界")
 
-    headers: list[bytes] = []
-    while True:
-        line = handler.rfile.readline()
-        consumed += len(line)
-        if line in (b"\r\n", b"\n", b""):
-            break
-        headers.append(line.rstrip(b"\r\n"))
-    header_text = b"\r\n".join(headers).decode("utf-8", errors="replace")
-    filename_match = re.search(r'filename="([^"]*)"', header_text, flags=re.IGNORECASE)
-    original = safe_name(filename_match.group(1) if filename_match else "上传视频.mp4")
-    suffix = Path(original).suffix.lower()
-    if suffix not in ALLOWED_SUFFIXES:
-        raise ValueError("只支持常见视频格式：MP4、MOV、MKV、AVI、WebM 等")
-
-    target = UPLOAD_DIR / f"{job_id}_{original}"
     marker = b"\r\n--" + boundary
-    buffer = bytearray()
-    remaining = content_length - consumed
-    with target.open("wb") as stream:
-        while remaining > 0:
-            chunk = handler.rfile.read(min(1024 * 1024, remaining))
-            if not chunk:
-                raise ValueError("上传过程中连接中断")
-            consumed += len(chunk)
-            remaining -= len(chunk)
-            buffer.extend(chunk)
-            position = buffer.find(marker)
-            if position >= 0:
-                stream.write(buffer[:position])
-                while remaining > 0:
-                    tail = handler.rfile.read(min(1024 * 1024, remaining))
-                    if not tail:
-                        break
-                    remaining -= len(tail)
-                break
-            keep = len(marker) + 4
-            if len(buffer) > keep:
-                stream.write(buffer[:-keep])
-                del buffer[:-keep]
-        else:
-            raise ValueError("上传数据中没有结束边界")
-    if not target.exists() or target.stat().st_size == 0:
-        raise ValueError("上传文件为空")
-    return original, target
+    uploads: list[tuple[str, Path]] = []
+    try:
+        part_index = 0
+        closed = False
+        while not closed:
+            headers: dict[str, str] = {}
+            while True:
+                line = reader.readline()
+                if line in (b"\r\n", b"\n", b""):
+                    break
+                if b":" in line:
+                    key, value = line.rstrip(b"\r\n").split(b":", 1)
+                    headers[key.decode("latin-1").strip().lower()] = value.decode("utf-8", errors="replace").strip()
+            if not headers:
+                raise ValueError("multipart 文件头为空")
+            disposition = headers.get("content-disposition", "")
+            filename_match = re.search(r'filename="([^"]*)"', disposition, flags=re.IGNORECASE)
+            if not filename_match:
+                filename_match = re.search(r"filename=([^;]+)", disposition, flags=re.IGNORECASE)
+            original = safe_name(filename_match.group(1).strip() if filename_match else "") if filename_match else ""
+            target: Path | None = None
+            if original:
+                suffix = Path(original).suffix.lower()
+                if suffix not in ALLOWED_SUFFIXES:
+                    raise ValueError("只支持常见视频格式：MP4、MOV、MKV、AVI、WebM 等")
+                target = UPLOAD_DIR / f"{upload_id}_{part_index:04d}_{original}"
+                part_index += 1
+            closed = reader.stream_part(target, marker)
+            if target:
+                if not target.exists() or target.stat().st_size == 0:
+                    raise ValueError("上传文件为空")
+                uploads.append((original, target))
+        if not uploads:
+            raise ValueError("未找到视频文件")
+        return uploads
+    except Exception:
+        for _original, target in uploads:
+            target.unlink(missing_ok=True)
+        raise
+
+
+def output_path_for(original: str, mode: str, start_sec: float, end_sec: float | None, job_id: str) -> Path:
+    stem = safe_name(Path(original).stem, 80)
+    range_label = ""
+    if start_sec > 0 or end_sec is not None:
+        range_label = (
+            f"__片段_{start_sec:.2f}-{end_sec:.2f}"
+            if end_sec is not None
+            else f"__片段_{start_sec:.2f}-结尾"
+        )
+    output_label = "字幕提取" if mode == "subtitle" else "视频分析"
+    return DEFAULT_OUTPUT_ROOT / (
+        f"{stem}__{output_label}{range_label}__"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job_id[:8]}"
+    )
+
+
+def make_job(
+    job_id: str,
+    original: str,
+    source: Path,
+    output: Path,
+    start_sec: float,
+    end_sec: float | None,
+    mode: str,
+    release_gpu_after: bool,
+    batch_id: str | None = None,
+    batch_index: int = 0,
+    batch_total: int = 1,
+) -> dict:
+    job = {
+        "id": job_id,
+        "filename": original,
+        "source_path": str(source),
+        "output_path": str(output),
+        "output_dir": to_windows_path(output),
+        "status": "queued",
+        "status_label": "排队中",
+        "phase": "等待任务队列",
+        "progress": 0,
+        "logs": [],
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+        "mode": mode,
+        "release_gpu_after": release_gpu_after,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "files": [],
+    }
+    if batch_id:
+        job.update(
+            {
+                "batch_id": batch_id,
+                "batch_index": batch_index,
+                "batch_total": batch_total,
+            }
+        )
+    return job
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1344,6 +2137,31 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "品牌 logo 不存在"}, 404)
                 return
             self.send_bytes(logo.read_bytes(), "image/png")
+            return
+        if parsed.path == "/api/queue":
+            with JOBS_LOCK:
+                active = next(
+                    (dict(item) for item in JOBS.values() if item.get("status") == "running"),
+                    None,
+                )
+                queued = sum(item.get("status") == "queued" for item in JOBS.values())
+            self.send_json(
+                {
+                    "queue_size": JOB_QUEUE.qsize(),
+                    "queued_jobs": queued,
+                    "active_job": active,
+                    "gpu": gpu_status(),
+                }
+            )
+            return
+        match = re.fullmatch(r"/api/batches/([^/]+)", parsed.path)
+        if match:
+            batch_id = unquote(match.group(1))
+            result = batch_snapshot(batch_id)
+            if not result:
+                self.send_json({"error": "批量任务不存在"}, 404)
+                return
+            self.send_json(result)
             return
         match = re.fullmatch(r"/api/jobs/([^/]+)", parsed.path)
         if match:
@@ -1393,64 +2211,131 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/api/jobs":
+        is_batch = parsed.path == "/api/batches"
+        if parsed.path not in {"/api/jobs", "/api/batches"}:
             self.send_json({"error": "Not Found"}, 404)
             return
-        job_id = uuid.uuid4().hex[:12]
-        target: Path | None = None
+        request_id = uuid.uuid4().hex[:12]
+        targets: list[Path] = []
         try:
             query = parse_qs(parsed.query)
             raw_start = query.get("start_sec", [""])[0].strip()
             raw_end = query.get("end_sec", [""])[0].strip()
+            mode = query.get("mode", ["director"])[0].strip().lower()
             raw_release = query.get("release_gpu", ["1"])[0].strip().lower()
-            start_sec = float(raw_start) if raw_start else 0.0
-            end_sec = float(raw_end) if raw_end else None
             release_gpu_after = raw_release not in {"0", "false", "no", "off"}
-            if not math.isfinite(start_sec) or start_sec < 0:
-                raise ValueError("开始秒必须是大于等于 0 的数字")
-            if end_sec is not None and (not math.isfinite(end_sec) or end_sec <= start_sec):
-                raise ValueError("结束秒必须大于开始秒")
-            original, target = create_upload(self, job_id)
-            stem = safe_name(Path(original).stem, 80)
-            range_label = ""
-            if start_sec > 0 or end_sec is not None:
-                range_label = f"__片段_{start_sec:.2f}-{end_sec:.2f}" if end_sec is not None else f"__片段_{start_sec:.2f}-结尾"
-            output = DEFAULT_OUTPUT_ROOT / f"{stem}__视频分析{range_label}__{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job_id[:8]}"
+            if mode not in {"director", "subtitle"}:
+                raise ValueError("分析模式无效")
+            if is_batch:
+                # 批量入口默认整片分析，避免把单视频的时间区间误套到整批素材上。
+                start_sec = 0.0
+                end_sec = None
+            else:
+                start_sec = float(raw_start) if raw_start else 0.0
+                end_sec = float(raw_end) if raw_end else None
+                if not math.isfinite(start_sec) or start_sec < 0:
+                    raise ValueError("开始秒必须是大于等于 0 的数字")
+                if end_sec is not None and (not math.isfinite(end_sec) or end_sec <= start_sec):
+                    raise ValueError("结束秒必须大于开始秒")
+            uploads = create_uploads(self, request_id)
+            targets = [target for _original, target in uploads]
+            if not is_batch and len(uploads) != 1:
+                raise ValueError("单视频入口只能上传一个视频，请使用批量入口")
+            if is_batch:
+                batch_id = request_id
+                batch = {
+                    "id": batch_id,
+                    "kind": "batch",
+                    "mode": mode,
+                    "mode_label": "视觉字幕提取" if mode == "subtitle" else "导演拉片分析",
+                    "status": "queued",
+                    "status_label": "排队中",
+                    "phase": "等待任务队列",
+                    "progress": 0,
+                    "total": len(uploads),
+                    "completed": 0,
+                    "succeeded": 0,
+                    "failed": 0,
+                    "job_ids": [],
+                    "continue_on_error": True,
+                    "release_gpu_after": release_gpu_after,
+                    "gpu_released": False,
+                    "created_at": datetime.now().isoformat(timespec="seconds"),
+                    "current_job_id": "",
+                }
+                with JOBS_LOCK:
+                    BATCHES[batch_id] = batch
+                    save_batch_state(batch)
+                for index, (original, target) in enumerate(uploads, start=1):
+                    child_id = uuid.uuid4().hex[:12]
+                    output = output_path_for(original, mode, start_sec, end_sec, child_id)
+                    output.mkdir(parents=True, exist_ok=True)
+                    job = make_job(
+                        child_id,
+                        original,
+                        target,
+                        output,
+                        start_sec,
+                        end_sec,
+                        mode,
+                        release_gpu_after,
+                        batch_id=batch_id,
+                        batch_index=index,
+                        batch_total=len(uploads),
+                    )
+                    with JOBS_LOCK:
+                        JOBS[child_id] = job
+                        BATCHES[batch_id]["job_ids"].append(child_id)
+                        save_job_state(job)
+                    # 批量任务只在整批结束后释放视觉模型，减少重复停启。
+                    JOB_QUEUE.put(
+                        {
+                            "job_id": child_id,
+                            "source": target,
+                            "original": original,
+                            "output": output,
+                            "start_sec": start_sec,
+                            "end_sec": end_sec,
+                            "mode": mode,
+                            "release_gpu_after": False,
+                            "batch_id": batch_id,
+                        }
+                    )
+                with JOBS_LOCK:
+                    save_batch_state(BATCHES[batch_id])
+                response = batch_snapshot(batch_id) or {"error": "批量任务创建失败"}
+                targets = []
+                self.send_json(response, 202)
+                return
+
+            original, target = uploads[0]
+            job_id = request_id
+            output = output_path_for(original, mode, start_sec, end_sec, job_id)
             output.mkdir(parents=True, exist_ok=True)
-            job = {
-                "id": job_id,
-                "filename": original,
-                "source_path": str(target),
-                "output_path": str(output),
-                "output_dir": to_windows_path(output),
-                "status": "queued",
-                "status_label": "排队中",
-                "phase": "等待启动",
-                "progress": 0,
-                "logs": [],
-                "start_sec": start_sec,
-                "end_sec": end_sec,
-                "release_gpu_after": release_gpu_after,
-                "created_at": datetime.now().isoformat(timespec="seconds"),
-                "files": [],
-            }
+            job = make_job(job_id, original, target, output, start_sec, end_sec, mode, release_gpu_after)
             with JOBS_LOCK:
                 JOBS[job_id] = job
                 save_job_state(job)
-            thread = threading.Thread(
-                target=run_job,
-                args=(job_id, target, original, output, start_sec, end_sec, release_gpu_after),
-                daemon=True,
+            JOB_QUEUE.put(
+                {
+                    "job_id": job_id,
+                    "source": target,
+                    "original": original,
+                    "output": output,
+                    "start_sec": start_sec,
+                    "end_sec": end_sec,
+                    "mode": mode,
+                    "release_gpu_after": release_gpu_after,
+                }
             )
-            with JOBS_LOCK:
-                JOBS[job_id]["thread"] = thread
-            thread.start()
-            response = {key: value for key, value in JOBS[job_id].items() if key != "thread"}
+            response = {key: value for key, value in job.items() if key != "thread"}
+            response["queue_size"] = JOB_QUEUE.qsize()
             response["gpu"] = gpu_status()
+            targets = []
             self.send_json(response, 202)
         except Exception as exc:
-            if target and target.exists():
-                target.unlink()
+            for target in targets:
+                target.unlink(missing_ok=True)
             self.send_json({"error": str(exc)}, 400)
 
 
@@ -1459,6 +2344,7 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7867)
     args = parser.parse_args()
+    start_queue_worker()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"视频分析 WebUI：http://localhost:{args.port}", flush=True)
     print(f"默认输出目录：{DEFAULT_OUTPUT_ROOT}", flush=True)
