@@ -790,6 +790,170 @@ HTML = """<!doctype html>
     .studio-footer { color: #89a1b0; }
     .studio-footer span:last-child { color: #7795a7; }
     @media (max-width: 720px) { .hero-tools { width: 100%; justify-content: flex-start; } }
+
+    /* Reference console layout: navigation, task workspace, status and output. */
+    body { background: #f7fbff; color: #17354f; }
+    body::before { display: none; }
+    main.app-shell { width: 100%; max-width: none; min-height: 100vh; margin: 0; padding: 0; display: grid; grid-template-columns: 214px minmax(0, 1fr); grid-template-rows: 86px 1fr; overflow: hidden; background: #f9fcff; }
+    .hero { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; min-width: 0; height: 86px; margin: 0; padding: 0 34px; border-bottom: 1px solid #e6eef6; background: #fff; }
+    .eyebrow { display: none; }
+    .hero-row { width: 100%; height: 100%; margin: 0; gap: 24px; }
+    .brand-lockup { gap: 13px; }
+    .brand-logo { width: 52px; height: 52px; border: 0; border-radius: 12px; background: transparent; box-shadow: none; mix-blend-mode: multiply; }
+    .brand-name { margin-bottom: 4px; color: #132c49; font: 800 17px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: -.04em; text-transform: none; }
+    h1 { margin: 0; color: #173b61; font-size: 25px; letter-spacing: -.05em; }
+    .title-mark { display: none; }
+    .hint { display: none; }
+    .hero-tools { margin-left: auto; }
+    .hero-actions { gap: 9px; }
+    .local-pill { padding: 8px 12px; font-size: 11px; }
+    .top-action { padding: 8px 12px; font-size: 11px; }
+
+    .app-sidebar { grid-column: 1; grid-row: 2; display: flex; min-height: calc(100vh - 86px); flex-direction: column; padding: 28px 12px 20px 0; border-right: 1px solid #e6eef6; background: #fff; }
+    .side-nav { display: grid; gap: 5px; }
+    .side-nav-item { width: 100%; min-height: 48px; margin: 0; padding: 12px 18px 12px 24px; display: flex; align-items: center; gap: 15px; border: 0; border-left: 3px solid transparent; border-radius: 0 10px 10px 0; background: transparent; color: #5a6f88; font-size: 14px; font-weight: 550; text-align: left; box-shadow: none; }
+    .side-nav-item:hover { border-left-color: #9fc9f4; background: #f2f8fe; color: #287fda; box-shadow: none; transform: none; }
+    .side-nav-item.active { border-left-color: #2b88f5; background: #eaf4ff; color: #1879e8; font-weight: 750; box-shadow: none; }
+    .nav-icon { width: 23px; height: 23px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid #d7e4f0; border-radius: 6px; background: #fbfdff; color: #60758f; font-size: 12px; line-height: 1; }
+    .side-nav-item.active .nav-icon { border-color: #b9d9fb; background: #d9ecff; color: #1681f2; }
+    .sidebar-foot { margin-top: auto; padding: 18px 24px; color: #90a4b8; font: 700 10px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .12em; }
+    .sidebar-foot span { display: block; color: #b1c0ce; font-size: 8px; letter-spacing: .18em; }
+    .app-content { grid-column: 2; grid-row: 2; min-width: 0; padding: 30px 36px 54px; background: #f9fcff; }
+    #home-view { max-width: 1180px; margin: 0 auto; }
+    #workbench-view { min-width: 0; }
+    #workbench-view[hidden] { display: none; }
+    .workbench-nav { display: none; }
+    #progress-card { order: 3; width: 100%; max-width: 1360px; margin: 18px auto 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .studio-grid { order: 1; width: 100%; max-width: 1360px; margin: 0 auto; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; }
+    .input-card { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .input-card .card-head { margin-bottom: 18px; }
+    .input-card .card-head h2 { font-size: 23px; }
+    .input-card .tag { display: none; }
+    .mode-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin-bottom: 22px; }
+    .mode-card { width: 100%; min-height: 86px; margin: 0; padding: 15px 18px; display: flex; align-items: center; gap: 13px; border: 1px solid #dce8f3; border-radius: 10px; background: #fff; color: #17354f; text-align: left; box-shadow: 0 3px 13px #4d83a50b; }
+    .mode-card:hover { border-color: #8ec3f3; background: #fbfdff; box-shadow: 0 5px 18px #4d83a514; transform: none; }
+    .mode-card.selected { border-color: #2b88f5; box-shadow: 0 0 0 1px #2b88f51c, 0 5px 18px #4d83a514; }
+    .mode-card-icon { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid #cbe2fb; border-radius: 10px; background: #edf7ff; color: #2085ee; font-size: 21px; }
+    .mode-card-icon.subtitle { border-color: #ccecef; background: #effafb; color: #3d9eae; }
+    .mode-card > span:nth-child(2) { min-width: 0; }
+    .mode-card strong, .mode-card small { display: block; }
+    .mode-card strong { color: #173b61; font-size: 15px; }
+    .mode-card small { margin-top: 5px; color: #7790a5; font-size: 11px; }
+    .mode-radio { width: 18px; height: 18px; flex: 0 0 auto; margin-left: auto; border: 1px solid #c6d4e2; border-radius: 50%; background: #fff; }
+    .mode-card.selected .mode-radio { border-color: #2186f5; background: #2186f5; box-shadow: inset 0 0 0 4px #fff; }
+    .upload-zone { min-height: 102px; padding: 18px 20px; border: 1px dashed #b9d1e8; border-radius: 10px; background: #fcfeff; box-shadow: none; }
+    .upload-zone:hover, .upload-zone.dragging { border-color: #3d96ef; background: #f5fbff; box-shadow: 0 7px 20px #4d93b51a; transform: none; }
+    .upload-icon { width: 42px; height: 42px; border-color: #b8d9f8; border-radius: 10px; background: #eaf5ff; color: #2e8bf0; }
+    .upload-copy strong { color: #244b66; font-size: 14px; }
+    .upload-copy span { color: #86a0b4; font-size: 11px; }
+    .upload-action { margin-left: auto; padding: 9px 15px; border: 1px solid #d8e5f1; border-radius: 8px; background: #fff; color: #496b86; font-size: 12px; font-weight: 650; white-space: nowrap; }
+    .upload-zone:hover .upload-action { border-color: #9ccbf5; color: #227fd9; }
+    .file-name { min-height: 52px; margin-top: 10px; padding: 13px 15px 13px 46px; position: relative; display: flex; align-items: center; border: 1px solid #dce8f2; border-radius: 9px; background: #fff; color: #365e75; font-size: 12px; box-shadow: 0 3px 12px #4d83a509; }
+    .file-name::before { position: absolute; left: 15px; color: #3988c2; content: "▣"; font-size: 18px; }
+    .batch-source-actions { gap: 7px; }
+    .batch-source-actions[hidden], .batch-builder[hidden], .batch-help[hidden], #range-controls[hidden], #preview-panel[hidden], #progress-card[hidden], #result-card[hidden], #home-view[hidden] { display: none !important; }
+    .batch-builder { box-shadow: none; }
+    #batch-builder .batch-builder-copy { display: none; }
+    #mode-help, #range-note, #pipeline-note, .input-card form > p.small { display: none; }
+    .range-grid { margin-top: 14px; }
+    .release-option { margin-top: 14px; padding: 10px 12px; }
+    .release-option small { font-size: 10px; }
+    #start { margin-top: 15px; min-height: 48px; border-radius: 9px; font-size: 14px; }
+    .studio-sidebar { position: static; display: grid; gap: 24px; }
+    .studio-sidebar .card { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .studio-sidebar .side-head { margin-bottom: 13px; }
+    .studio-sidebar .side-head h2 { color: #173b61; font-size: 20px; }
+    .studio-sidebar .live-badge { font-size: 9px; }
+    .model-stack { gap: 9px; }
+    .model-row { min-height: 70px; padding: 12px; border-radius: 9px; background: #fff; box-shadow: 0 3px 12px #4d83a50b; }
+    .model-info strong { font-size: 12px; }
+    .model-info em { font-size: 10px; }
+    .gpu-note { display: none; }
+    .delivery-card { padding-top: 21px !important; border-top: 1px solid #e4edf5 !important; }
+    .delivery-stat { padding: 11px; }
+    .delivery-list { gap: 6px; margin-top: 10px; }
+    .delivery-item { font-size: 11px; }
+    .path-label, .side-path { display: none; }
+    .pipeline-card { order: 2; width: 100%; max-width: 1360px; margin: 24px auto 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .pipeline-card .card-head { margin-bottom: 12px; }
+    .pipeline-card .section-label { display: none; }
+    .pipeline-card .card-head h2 { color: #173b61; font-size: 20px; }
+    .pipeline-card .pipeline-note { display: none; }
+    .flow { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 0; }
+    .flow-item { min-height: 62px; padding: 12px 13px; display: flex; align-items: center; gap: 8px; position: relative; border-color: #dce8f2; border-radius: 9px; background: #fff; box-shadow: 0 3px 12px #4d83a509; }
+    .flow-item:not(:last-child)::after { position: absolute; right: -19px; z-index: 2; color: #2f89ed; content: "→"; font-size: 18px; font-weight: 700; }
+    .flow-num { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; margin: 0; border-radius: 50%; background: #eaf4ff; color: #328ce4; font: 700 10px ui-monospace, monospace; }
+    .flow-item strong { margin: 0; color: #365e75; font-size: 12px; white-space: nowrap; }
+    .flow-item span:last-child { display: none; }
+    #progress-card .row { margin-bottom: 5px; }
+    #progress-card .row > div:first-child { min-width: 0; }
+    #progress-card .row .section-label { margin-bottom: 4px; }
+    #progress-card .row strong { color: #365e75; font-size: 12px; }
+    #progress-card .status { padding: 5px 9px; font-size: 10px; }
+    #progress-card .progress-head { margin-top: 8px; }
+    #progress-card .progress-head strong { font-size: 14px; }
+    #progress-card .progress-percent { font-size: 24px; }
+    #progress-card > .phase { font-size: 11px; }
+    #progress-card > .run-plan { display: none; }
+    #progress-card > .telemetry-grid { order: 5; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; }
+    .telemetry-item { min-height: 76px; padding: 11px; border-radius: 9px; background: #fff; }
+    .telemetry-label { margin-bottom: 6px; font-size: 9px; }
+    .telemetry-value { font-size: 15px; }
+    .telemetry-sub { margin-top: 5px; font-size: 9px; }
+    #progress-card > .log-head { order: 6; margin-top: 18px; }
+    #progress-card > #logs { order: 7; min-height: 92px; max-height: 280px; margin-top: 7px; padding: 12px; border-color: #dce8f2; border-radius: 9px; background: #fff; color: #527087; font-size: 11px; }
+    #progress-card > .model-control { order: 8; }
+    #progress-card > .batch-queue-card { order: 9; }
+    #result-card { order: 4; max-width: 1360px; margin: 22px auto 0; }
+    .studio-footer { margin-top: 26px; color: #9aabba; }
+    .home-view .entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .home-note { display: none; }
+    @media (max-width: 1080px) {
+      main.app-shell { grid-template-columns: 76px minmax(0, 1fr); }
+      .app-sidebar { padding-right: 0; }
+      .side-nav-item { justify-content: center; padding: 12px; border-radius: 0; }
+      .side-nav-item > span:last-child, .sidebar-foot { display: none; }
+      .studio-grid { grid-template-columns: minmax(0, 1fr) 290px; gap: 20px; }
+      #progress-card > .telemetry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      main.app-shell { display: block; overflow: visible; }
+      .hero { height: auto; min-height: 76px; padding: 12px 18px; }
+      .hero-row { align-items: center; }
+      .brand-logo { width: 42px; height: 42px; }
+      .brand-name { font-size: 14px; }
+      h1 { font-size: 20px; }
+      .hero-tools { width: auto; }
+      .hero-actions { flex-wrap: wrap; justify-content: flex-end; }
+      .local-pill { display: none; }
+      .app-sidebar { min-height: 0; padding: 0; border-right: 0; border-bottom: 1px solid #e6eef6; }
+      .side-nav { display: flex; gap: 0; overflow-x: auto; }
+      .side-nav-item { min-width: 82px; min-height: 48px; padding: 8px 12px; flex-direction: column; gap: 3px; border-left: 0; border-bottom: 3px solid transparent; border-radius: 0; font-size: 10px; }
+      .side-nav-item.active { border-left: 0; border-bottom-color: #2b88f5; }
+      .side-nav-item > span:last-child { display: block; }
+      .app-content { padding: 22px 16px 40px; }
+      .studio-grid { display: block; }
+      .studio-sidebar { margin-top: 26px; }
+      .mode-picker, .flow { grid-template-columns: 1fr 1fr; }
+      .flow-item:not(:last-child)::after { display: none; }
+      #progress-card > .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 480px) {
+      .hero-row { gap: 10px; }
+      .brand-copy { min-width: 0; }
+      h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .top-action { padding: 7px 9px; }
+      .mode-picker { gap: 8px; }
+      .mode-card { min-height: 76px; padding: 11px; gap: 8px; }
+      .mode-card-icon { width: 32px; height: 32px; font-size: 16px; }
+      .mode-card strong { font-size: 12px; }
+      .mode-card small { font-size: 9px; }
+      .mode-radio { width: 14px; height: 14px; }
+      .upload-action { padding: 8px 9px; font-size: 10px; }
+      .flow { gap: 8px; }
+      .flow-item { padding: 10px 8px; }
+      .flow-item strong { font-size: 10px; }
+    }
   </style>
 </head>
 <body>
@@ -799,7 +963,7 @@ HTML = """<!doctype html>
     <i class="ripple-ring ripple-three"></i>
     <i class="ripple-ring ripple-four"></i>
   </div>
-  <main>
+  <main class="app-shell">
     <header class="hero">
       <div class="eyebrow">野构 STUDIO · LOCAL MEDIA WORKBENCH</div>
       <div class="hero-row">
@@ -814,11 +978,34 @@ HTML = """<!doctype html>
         <div class="hero-tools">
           <div class="hero-actions">
             <button id="release-vram" class="top-action" type="button" title="只停止视觉模型容器，WebUI 保持在线">释放显存</button>
-            <div class="local-pill"><span></span>本地运行 · 不上传云端</div>
+            <div class="local-pill"><span></span>本地运行</div>
           </div>
         </div>
       </div>
     </header>
+
+    <aside class="app-sidebar">
+      <nav class="side-nav" aria-label="工作台导航">
+        <button class="side-nav-item active" type="button" data-sidebar-action="new">
+          <span class="nav-icon">▶</span><span>新建任务</span>
+        </button>
+        <button class="side-nav-item" type="button" data-sidebar-action="batch">
+          <span class="nav-icon">▦</span><span>批处理</span>
+        </button>
+        <button class="side-nav-item" type="button" data-sidebar-action="output">
+          <span class="nav-icon">□</span><span>输出</span>
+        </button>
+        <button class="side-nav-item" type="button" data-sidebar-action="models">
+          <span class="nav-icon">◇</span><span>模型</span>
+        </button>
+        <button class="side-nav-item" type="button" data-sidebar-action="settings">
+          <span class="nav-icon">⚙</span><span>设置</span>
+        </button>
+      </nav>
+      <div class="sidebar-foot">野构 STUDIO<span>MEDIA LAB</span></div>
+    </aside>
+
+    <div class="app-content">
 
     <section id="home-view" class="home-view">
       <div class="entry-grid">
@@ -855,14 +1042,27 @@ HTML = """<!doctype html>
       <div class="studio-main">
     <section class="card input-card">
       <div class="card-head">
-        <div><div class="section-label">INPUT</div><h2 id="input-title">选择一个视频</h2></div>
+        <div><div class="section-label">NEW TASK</div><h2 id="input-title">新建任务</h2></div>
         <span id="mode-tag" class="tag">导演拉片模式</span>
       </div>
       <form id="upload-form">
+        <div class="mode-picker" aria-label="分析类型">
+          <button id="mode-director" class="mode-card selected" type="button" data-select-mode="director">
+            <span class="mode-card-icon">▣</span>
+            <span><strong>导演拉片</strong><small>视频镜头分析</small></span>
+            <span class="mode-radio"></span>
+          </button>
+          <button id="mode-subtitle" class="mode-card" type="button" data-select-mode="subtitle">
+            <span class="mode-card-icon subtitle">▤</span>
+            <span><strong>字幕提取</strong><small>提取视觉字幕</small></span>
+            <span class="mode-radio"></span>
+          </button>
+        </div>
         <label class="upload-zone" id="drop-zone" for="video">
           <input id="video" name="video" type="file" accept="video/*">
           <span class="upload-icon">↑</span>
-          <span class="upload-copy"><strong id="upload-title">点击选择，或把视频拖到这里</strong><span id="upload-copy">支持 MP4、MOV、MKV、AVI、WebM 等常见格式</span></span>
+          <span class="upload-copy"><strong id="upload-title">点击或拖拽视频文件到此处</strong><span id="upload-copy">MP4 / MOV / MKV / AVI</span></span>
+          <span class="upload-action">选择文件</span>
         </label>
         <div id="file-name" class="file-name">尚未选择视频</div>
         <div id="batch-source-actions" class="batch-source-actions" hidden>
@@ -935,7 +1135,7 @@ HTML = """<!doctype html>
       <aside class="studio-sidebar">
         <section class="card model-card">
           <div class="side-head">
-            <div><div class="section-label">LOCAL MODELS</div><h2>分析引擎</h2></div>
+            <div><div class="section-label">LOCAL MODELS</div><h2>本地模型</h2></div>
             <span class="live-badge">GPU READY</span>
           </div>
           <div class="model-stack">
@@ -956,7 +1156,7 @@ HTML = """<!doctype html>
         </section>
         <section class="card delivery-card">
           <div class="side-head">
-            <div><div class="section-label">DELIVERY</div><h2>输出工作包</h2></div>
+            <div><div class="section-label">DELIVERY</div><h2>输出</h2></div>
             <span class="tag">V1</span>
           </div>
           <div class="delivery-stat"><strong id="delivery-count">04</strong><span id="delivery-copy">份主文档<br>可下载、可继续加工</span></div>
@@ -974,7 +1174,7 @@ HTML = """<!doctype html>
 
     <section class="card pipeline-card">
       <div class="card-head">
-        <div><div class="section-label">PIPELINE</div><h2>这次任务会做什么</h2></div>
+        <div><div class="section-label">PIPELINE</div><h2>处理流程</h2></div>
       </div>
       <div class="flow">
         <div class="flow-item"><span class="flow-num">01</span><strong>截取范围</strong><span>按开始秒和结束秒生成分析片段。</span></div>
@@ -987,7 +1187,7 @@ HTML = """<!doctype html>
 
     <section id="progress-card" class="card" hidden>
       <div class="row">
-        <strong id="filename">等待任务</strong>
+        <div><div class="section-label">SYSTEM STATUS</div><strong id="filename">等待任务</strong></div>
         <span id="status" class="status">等待中</span>
       </div>
       <div class="progress-head">
@@ -1015,6 +1215,7 @@ HTML = """<!doctype html>
         <div class="telemetry-item"><span class="telemetry-label">显存占用</span><strong id="gpu-memory" class="telemetry-value">--</strong><span id="gpu-memory-sub" class="telemetry-sub">已用 / 总量</span></div>
         <div class="telemetry-item"><span class="telemetry-label">温度 / 功耗</span><strong id="gpu-thermal" class="telemetry-value">--</strong><span id="gpu-power" class="telemetry-sub">功耗 --</span></div>
         <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">运行状态</span><strong id="runtime-status" class="telemetry-value">正常</strong><span id="runtime-status-sub" class="telemetry-sub">等待任务</span></div>
       </div>
       <div class="log-head"><div><div class="section-label">LIVE LOG</div><strong>运行日志</strong></div><span class="log-live">LIVE</span><span id="log-count" class="log-count">0 行</span></div>
       <pre id="logs"></pre>
@@ -1033,6 +1234,8 @@ HTML = """<!doctype html>
       <p id="error" class="error"></p>
     </section>
     <div class="studio-footer"><span>野构 STUDIO · MEDIA ANALYSIS LAB</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
+    </div>
+
     </div>
   </main>
   <script>
@@ -1061,6 +1264,8 @@ HTML = """<!doctype html>
     const gpuPower = document.getElementById("gpu-power");
     const gpuName = document.getElementById("gpu-name");
     const gpuRefresh = document.getElementById("gpu-refresh");
+    const runtimeStatus = document.getElementById("runtime-status");
+    const runtimeStatusSub = document.getElementById("runtime-status-sub");
     const outputDir = document.getElementById("output-dir");
     const outputCount = document.getElementById("output-count");
     const files = document.getElementById("files");
@@ -1073,6 +1278,7 @@ HTML = """<!doctype html>
     const inputTitle = document.getElementById("input-title");
     const modeTag = document.getElementById("mode-tag");
     const modeHelp = document.getElementById("mode-help");
+    const modePickerButtons = Array.from(document.querySelectorAll("[data-select-mode]"));
     const batchHelp = document.getElementById("batch-help");
     const rangeNote = document.getElementById("range-note");
     const releaseHelp = document.getElementById("release-help");
@@ -1092,6 +1298,7 @@ HTML = """<!doctype html>
     const homeView = document.getElementById("home-view");
     const workbenchView = document.getElementById("workbench-view");
     const backHome = document.getElementById("back-home");
+    const sidebarButtons = Array.from(document.querySelectorAll("[data-sidebar-action]"));
     const entryLabel = document.getElementById("entry-label");
     const entryButtons = Array.from(document.querySelectorAll("[data-entry-mode]"));
     const heroTitle = document.getElementById("hero-title");
@@ -1141,18 +1348,16 @@ HTML = """<!doctype html>
       const subtitle = analysisMode.value === "subtitle";
       const singleLabel = subtitle ? "视觉字幕提取" : "导演拉片分析";
       const batchLabel = subtitle ? "批量字幕提取" : "批量导演拉片";
-      inputTitle.textContent = batchMode ? "选择多个视频" : "选择一个视频";
+      inputTitle.textContent = "新建任务";
       modeTag.textContent = batchMode ? batchLabel + "模式" : singleLabel + "模式";
       entryLabel.textContent = batchMode ? batchLabel : singleLabel;
-      heroTitle.firstChild.textContent = batchMode
-        ? (subtitle ? "批量字幕提取工作台 " : "批量导演拉片工作台 ")
-        : (subtitle ? "视觉字幕提取工作台 " : "视频导演拉片工作台 ");
+      heroTitle.firstChild.textContent = "媒体分析工作台 ";
       heroHint.textContent = batchMode
         ? "文件夹 · 排序 · 队列 · 进度"
         : (subtitle
           ? "读取画面字幕，输出可复核时间轴。"
           : "画面、声音与时间线，一处查看。");
-      uploadTitle.textContent = batchMode ? "点击选择多个视频，或把视频拖到这里" : "点击选择，或把视频拖到这里";
+      uploadTitle.textContent = batchMode ? "点击或拖拽多个视频到此处" : "点击或拖拽视频文件到此处";
       uploadCopy.textContent = batchMode
         ? "可连续添加文件或读取文件夹，整理好顺序后一次提交。"
         : "支持 MP4、MOV、MKV、AVI、WebM 等常见格式";
@@ -1175,6 +1380,9 @@ HTML = """<!doctype html>
         ? (batchMode ? "逐项读取画面字幕 · 输出 JSON / SRT / VTT" : "画面字幕 · JSON / SRT / VTT")
         : (batchMode ? "逐项处理视觉、ASR、对齐与导演拉片" : "视觉、ASR、对齐与导演拉片");
       modeHelp.hidden = false;
+      modePickerButtons.forEach(function(button) {
+        button.classList.toggle("selected", button.dataset.selectMode === analysisMode.value);
+      });
       startButton.textContent = batchMode ? (subtitle ? "加入批量字幕队列" : "加入批量分析队列") : (subtitle ? "开始提取字幕" : "开始分析");
       if (batchMode) {
         renderBatchFiles();
@@ -1241,11 +1449,12 @@ HTML = """<!doctype html>
         clearTimeout(batchPollTimer);
         batchPollTimer = null;
       }
-      progressCard.hidden = true;
+      progressCard.hidden = false;
       resultCard.hidden = true;
       batchQueueCard.hidden = true;
       errorBox.textContent = "";
       updateModePresentation();
+      setSidebarActive(batchMode ? "batch" : "new");
       homeView.hidden = true;
       workbenchView.hidden = false;
       if (updateUrl) history.pushState(null, "", "#" + (batchMode ? analysisMode.value + "-batch" : analysisMode.value));
@@ -1259,6 +1468,7 @@ HTML = """<!doctype html>
       fileInput.value = "";
       folderInput.value = "";
       batchFiles = [];
+      setSidebarActive("new");
       renderBatchFiles();
       resetPreview();
       if (timer) {
@@ -1269,7 +1479,7 @@ HTML = """<!doctype html>
         clearTimeout(batchPollTimer);
         batchPollTimer = null;
       }
-      heroTitle.firstChild.textContent = "视频媒体分析工作台 ";
+      heroTitle.firstChild.textContent = "媒体分析工作台 ";
       heroHint.textContent = "选择一个工作入口，把视频整理成可回看、可下载、可继续加工的资料。";
       if (updateUrl) history.pushState(null, "", window.location.pathname + window.location.search);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1278,11 +1488,41 @@ HTML = """<!doctype html>
     function syncRoute() {
       const mode = window.location.hash.replace("#", "");
       if (["director", "subtitle", "director-batch", "subtitle-batch"].includes(mode)) enterMode(mode, false);
-      else showHome(false);
+      else enterMode("director", false);
+    }
+
+    function setSidebarActive(action) {
+      sidebarButtons.forEach(function(button) {
+        button.classList.toggle("active", button.dataset.sidebarAction === action);
+      });
+    }
+
+    function focusWorkbenchPanel(selector) {
+      if (workbenchView.hidden) enterMode(analysisMode.value, false);
+      window.setTimeout(function() {
+        const target = document.querySelector(selector);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
     }
 
     entryButtons.forEach(function(button) {
       button.addEventListener("click", function() { enterMode(button.dataset.entryMode); });
+    });
+    modePickerButtons.forEach(function(button) {
+      button.addEventListener("click", function() {
+        enterMode(batchMode ? button.dataset.selectMode + "-batch" : button.dataset.selectMode);
+      });
+    });
+    sidebarButtons.forEach(function(button) {
+      button.addEventListener("click", function() {
+        const action = button.dataset.sidebarAction;
+        if (action === "new") enterMode("director");
+        else if (action === "batch") enterMode(analysisMode.value + "-batch");
+        else if (action === "output") focusWorkbenchPanel("#result-card");
+        else if (action === "models") focusWorkbenchPanel(".model-card");
+        else if (action === "settings") focusWorkbenchPanel(".release-option");
+        if (action !== "batch" && action !== "new") setSidebarActive(action);
+      });
     });
     backHome.addEventListener("click", function() { showHome(); });
     window.addEventListener("popstate", syncRoute);
@@ -1737,6 +1977,27 @@ HTML = """<!doctype html>
       gpuRefresh.textContent = gpu.updated_at ? "更新 " + gpu.updated_at.slice(11) : "实时采样";
     }
 
+    function updateRuntimeStatus(job) {
+      if (!job) {
+        runtimeStatus.textContent = "正常";
+        runtimeStatusSub.textContent = "等待任务";
+        return;
+      }
+      if (job.status === "done") {
+        runtimeStatus.textContent = "已完成";
+        runtimeStatusSub.textContent = "输出已生成";
+      } else if (job.status === "failed") {
+        runtimeStatus.textContent = "需处理";
+        runtimeStatusSub.textContent = "当前任务失败";
+      } else if (job.status === "queued") {
+        runtimeStatus.textContent = "排队中";
+        runtimeStatusSub.textContent = "等待 GPU";
+      } else {
+        runtimeStatus.textContent = "运行中";
+        runtimeStatusSub.textContent = job.phase || "处理中";
+      }
+    }
+
     function updatePlan(job, percent) {
       const phaseText = String(job.phase || "");
       let active = 0;
@@ -1811,6 +2072,7 @@ HTML = """<!doctype html>
       phase.textContent = percent.toFixed(0) + "% · " + (job.phase || "处理中");
       updatePlan(job, percent);
       updateGpu(job.gpu);
+      updateRuntimeStatus(job);
       updateModelControl(job, job.model_restart);
       const logLines = jobLogLines(job);
       logs.textContent = logLines.join("\\n");
@@ -1890,6 +2152,7 @@ HTML = """<!doctype html>
       phase.textContent = percent.toFixed(0) + "% · " + (batch.phase || "等待任务队列");
       updatePlan({ mode: batch.mode, status: batch.status === "done" || batch.status === "partial" ? "done" : batch.status, progress: percent, phase: batch.phase }, percent);
       updateGpu(batch.gpu);
+      updateRuntimeStatus({ status: batch.status === "done" || batch.status === "partial" ? "done" : batch.status, phase: batch.phase });
       batchQueueCount.textContent = completed + " / " + total + " 已完成 · " + (Number(batch.failed) || 0) + " 个失败";
       batchQueueItems.innerHTML = "";
       const jobs = Array.isArray(batch.jobs) ? batch.jobs : [];
