@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -105,10 +106,42 @@ def truthy(value: Any, default: bool = True) -> bool:
     return str(value).strip().lower() not in {"0", "false", "no", "none", "null", "否"}
 
 
+READABLE_PUNCTUATION = set("，。！？,.!?…'’")
+EMPTY_CAPTIONS = {"无", "无字幕", "没有字幕", "none", "null", "n/a", "n a"}
+
+
 def clean_caption(value: Any) -> str:
+    """Keep subtitle content while removing model formatting/separators."""
+
     text = str(value or "").replace("\r", " ").replace("\n", " ")
+    text = re.sub(r"```(?:json|text|subtitle)?", " ", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"^\s*(?:字幕|台词|文本|caption|subtitle|text)\s*[:：]\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"\s+", " ", text).strip()
-    if text in {"无", "无字幕", "没有字幕", "none", "null", "n/a", "N/A"}:
+    if text.casefold() in EMPTY_CAPTIONS:
+        return ""
+
+    readable: list[str] = []
+    for char in text:
+        category = unicodedata.category(char)
+        if char.isspace():
+            readable.append(" ")
+        elif char in READABLE_PUNCTUATION:
+            readable.append(char)
+        elif category.startswith(("L", "N", "M")):
+            readable.append(char)
+        else:
+            # Brackets, dashes, slashes, bullets, pipes, emoji and Markdown
+            # symbols are separators/decoration rather than subtitle content.
+            readable.append(" ")
+    text = re.sub(r"\s+", " ", "".join(readable)).strip()
+    text = re.sub(r"\s+([，。！？,.!?…'’])", r"\1", text)
+    text = re.sub(r"([，。！？,.!?…])\1+", r"\1", text)
+    if text.casefold() in EMPTY_CAPTIONS:
         return ""
     return text
 
@@ -119,7 +152,7 @@ def subtitle_prompt(times: list[float]) -> str:
 
 这些图片按发送顺序对应视频时间：{mapping}。
 
-任务：找出画面中真正作为对白、旁白或翻译字幕出现的可读文字，用于后续重新配音。不要把台标、水印、按钮、聊天框、海报、书本、路牌、包装、衣服上的字、片名或普通场景文字当成对白字幕。字幕可能有两行，请合并为一条文字并保留原标点；看不清、被遮挡或无法确认时不要猜测。
+任务：找出画面中真正作为对白、旁白或翻译字幕出现的可读文字，用于后续重新配音。不要把台标、水印、按钮、聊天框、海报、书本、路牌、包装、衣服上的字、片名或普通场景文字当成对白字幕。字幕可能有两行，请合并为一条文字并保留自然句读；不要添加【】、[]、横杠、斜杠、竖线、项目符号、Markdown 或其他分隔符。看不清、被遮挡或无法确认时不要猜测。
 
 你必须为每一张图片返回一条 frame 记录，即使这一帧没有字幕也要返回 visible=false、text=""。只能输出一个 JSON 对象，禁止 Markdown 代码块、解释文字和额外字段。格式如下：
 {{"frames":[{{"frame_time_sec":{times[0] if times else 0:.3f},"visible":true,"text":"画面中实际读到的字幕","text_type":"dialogue","dubbing_candidate":true,"confidence":0.0}}]}}
