@@ -32,6 +32,7 @@ UPLOAD_DIR = WEBUI_STATE / "uploads"
 JOB_STATE_DIR = WEBUI_STATE / "jobs"
 DEFAULT_OUTPUT_ROOT = Path(os.environ.get("MEDIA_OUTPUT_ROOT", str(REPO_ROOT / "outputs")))
 MINICPM_CONTAINER = os.environ.get("MINICPM_CONTAINER", "vision-minicpm")
+MODEL_START_SCRIPT = REPO_ROOT / "scripts" / "run_model.sh"
 ASR_IMAGE = os.environ.get("ASR_IMAGE", "ragflow-qwen-asr:0.0.6")
 MEDIA_TOOL_IMAGE = os.environ.get(
     "MEDIA_TOOL_IMAGE",
@@ -57,6 +58,13 @@ GPU_STATS_CACHE_AT = 0.0
 GPU_STATS_CACHE: dict[str, object] = {
     "available": False,
     "message": "等待 GPU 状态",
+}
+MODEL_RESTART_LOCK = threading.RLock()
+MODEL_RESTART_THREAD: threading.Thread | None = None
+MODEL_RESTART_STATE: dict[str, object] = {
+    "status": "idle",
+    "message": "视觉模型待命",
+    "logs": [],
 }
 
 
@@ -136,6 +144,202 @@ def gpu_status() -> dict[str, object]:
         return dict(GPU_STATS_CACHE)
 
 
+def model_restart_snapshot() -> dict[str, object]:
+    """Return the last vLLM restart state for the progress panel."""
+
+    with MODEL_RESTART_LOCK:
+        value = dict(MODEL_RESTART_STATE)
+        value["logs"] = list(MODEL_RESTART_STATE.get("logs", []))
+        return value
+
+
+def _append_model_restart_log(message: str) -> None:
+    stamp = datetime.now().strftime("%H:%M:%S")
+    with MODEL_RESTART_LOCK:
+        logs = list(MODEL_RESTART_STATE.get("logs", []))
+        logs.append(f"[{stamp}] {message}")
+        MODEL_RESTART_STATE["logs"] = logs[-80:]
+        MODEL_RESTART_STATE["message"] = message
+
+
+def _job_waiting_for_visual_model(job: dict[str, object]) -> bool:
+    if str(job.get("status", "")) != "running":
+        return False
+    phase = str(job.get("phase", ""))
+    if any(marker in phase for marker in ("视觉分析", "识别字幕", "读取字幕", "高清逐秒")) and "等待" not in phase:
+        return False
+    recent_logs = " ".join(str(item) for item in list(job.get("logs", []))[-20:])
+    text = f"{phase} {recent_logs}"
+    return any(
+        marker in text
+        for marker in (
+            "等待 MiniCPM",
+            "等待视觉模型",
+            "等待视觉服务",
+            "API 就绪",
+            "启动视觉模型",
+            "视觉模型服务",
+        )
+    )
+
+
+def _model_restart_worker() -> None:
+    """Restart/start the configured vLLM container without touching the job queue."""
+
+    global MODEL_RESTART_THREAD
+    try:
+        _append_model_restart_log(f"准备重启视觉模型容器：{MINICPM_CONTAINER}")
+        inspect = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", MINICPM_CONTAINER],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+        if inspect.stdout.strip() == "true":
+            stop = subprocess.run(
+                ["docker", "stop", MINICPM_CONTAINER],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=45,
+            )
+            if stop.returncode:
+                raise RuntimeError((stop.stderr or stop.stdout or "停止视觉模型容器失败").strip())
+            _append_model_restart_log("旧的视觉模型容器已停止，开始重新启动。")
+        else:
+            _append_model_restart_log("视觉模型容器当前未运行，直接执行启动流程。")
+
+        process = subprocess.Popen(
+            ["bash", str(MODEL_START_SCRIPT)],
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for raw in process.stdout:
+            line = raw.rstrip()
+            if line:
+                _append_model_restart_log(line)
+        return_code = process.wait()
+        with MODEL_RESTART_LOCK:
+            if return_code:
+                MODEL_RESTART_STATE["status"] = "failed"
+                MODEL_RESTART_STATE["message"] = f"视觉模型启动失败，退出码 {return_code}"
+            else:
+                MODEL_RESTART_STATE["status"] = "ready"
+                MODEL_RESTART_STATE["message"] = "vLLM API 已就绪"
+    except Exception as exc:
+        with MODEL_RESTART_LOCK:
+            MODEL_RESTART_STATE["status"] = "failed"
+            MODEL_RESTART_STATE["message"] = f"视觉模型启动失败：{type(exc).__name__}: {exc}"
+        _append_model_restart_log(MODEL_RESTART_STATE["message"])
+    finally:
+        with MODEL_RESTART_LOCK:
+            MODEL_RESTART_THREAD = None
+
+
+def _model_release_worker() -> None:
+    """Stop only the vLLM container so the WebUI process stays online."""
+
+    global MODEL_RESTART_THREAD
+    try:
+        _append_model_restart_log(f"准备释放视觉模型显存：{MINICPM_CONTAINER}")
+        inspect = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", MINICPM_CONTAINER],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+        if inspect.stdout.strip() == "true":
+            stop = subprocess.run(
+                ["docker", "stop", MINICPM_CONTAINER],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=45,
+            )
+            if stop.returncode:
+                raise RuntimeError((stop.stderr or stop.stdout or "停止视觉模型容器失败").strip())
+            _append_model_restart_log("视觉模型容器已停止，GPU 显存已释放。")
+        else:
+            _append_model_restart_log("视觉模型容器当前未运行，GPU 显存已经处于释放状态。")
+        with MODEL_RESTART_LOCK:
+            MODEL_RESTART_STATE["status"] = "released"
+            MODEL_RESTART_STATE["message"] = "显存已释放，WebUI 保持在线"
+    except Exception as exc:
+        with MODEL_RESTART_LOCK:
+            MODEL_RESTART_STATE["status"] = "failed"
+            MODEL_RESTART_STATE["message"] = f"释放显存失败：{type(exc).__name__}: {exc}"
+        _append_model_restart_log(str(MODEL_RESTART_STATE["message"]))
+    finally:
+        with MODEL_RESTART_LOCK:
+            MODEL_RESTART_THREAD = None
+
+
+def start_model_restart() -> dict[str, object]:
+    """Start one asynchronous vLLM restart; existing analysis jobs remain queued/running."""
+
+    global MODEL_RESTART_THREAD
+    with JOBS_LOCK:
+        active_jobs = [dict(job) for job in JOBS.values() if job.get("status") == "running"]
+    if active_jobs and not any(_job_waiting_for_visual_model(job) for job in active_jobs):
+        raise RuntimeError("当前视觉模型正在处理画面，请等它进入等待阶段后再重启。")
+
+    with MODEL_RESTART_LOCK:
+        if MODEL_RESTART_THREAD and MODEL_RESTART_THREAD.is_alive():
+            return model_restart_snapshot()
+        MODEL_RESTART_STATE.clear()
+        MODEL_RESTART_STATE.update(
+            {
+                "status": "starting",
+                "message": "正在启动 vLLM，当前任务队列保持不变。",
+                "logs": [],
+                "started_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        )
+        MODEL_RESTART_THREAD = threading.Thread(
+            target=_model_restart_worker,
+            name="vllm-restart",
+            daemon=True,
+        )
+        MODEL_RESTART_THREAD.start()
+        return model_restart_snapshot()
+
+
+def release_model_memory() -> dict[str, object]:
+    """Release vLLM memory without stopping the WebUI or cancelling queued jobs."""
+
+    global MODEL_RESTART_THREAD
+    with JOBS_LOCK:
+        active_jobs = [dict(job) for job in JOBS.values() if job.get("status") == "running"]
+    if active_jobs or ANALYSIS_LOCK.locked():
+        raise RuntimeError("当前有分析任务正在执行，请等任务完成后再释放显存。")
+
+    with MODEL_RESTART_LOCK:
+        if MODEL_RESTART_THREAD and MODEL_RESTART_THREAD.is_alive():
+            raise RuntimeError("视觉模型正在启动或释放中，请稍候。")
+        MODEL_RESTART_STATE.clear()
+        MODEL_RESTART_STATE.update(
+            {
+                "status": "releasing",
+                "message": "正在释放显存，WebUI 保持在线。",
+                "logs": [],
+                "started_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        )
+        MODEL_RESTART_THREAD = threading.Thread(
+            target=_model_release_worker,
+            name="vllm-release",
+            daemon=True,
+        )
+        MODEL_RESTART_THREAD.start()
+        return model_restart_snapshot()
+
+
 HTML = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -158,6 +362,10 @@ HTML = """<!doctype html>
     .brand-copy { min-width: 0; }
     .brand-name { margin-bottom: 8px; color: #3b86b6; font: 800 12px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; }
     .hero-tools { display: flex; align-items: center; gap: 12px; }
+    .hero-actions { display: flex; align-items: center; gap: 9px; }
+    .top-action { width: auto; margin: 0; padding: 9px 12px; border: 1px solid #3e5d9b; border-radius: 999px; background: #1a2e5b; color: #b9c9ff; font-size: 12px; font-weight: 700; box-shadow: none; }
+    .top-action:hover { border-color: var(--cyan); background: #21396d; color: var(--cyan); box-shadow: none; transform: none; }
+    .top-action:disabled { background: #263653; color: #8293b0; cursor: wait; }
     .hero-stage { position: relative; width: 176px; height: 112px; flex: 0 0 auto; perspective: 700px; }
     .stage-halo { position: absolute; top: 50%; left: 50%; width: 84px; height: 84px; border-radius: 50%; background: #5f8bff22; filter: blur(18px); transform: translate(-50%, -50%); animation: halo-breathe 5s ease-in-out infinite; }
     .stage-core { position: absolute; top: 50%; left: 50%; display: grid; place-content: center; width: 69px; height: 69px; border: 1px solid #9eb7ff8c; border-radius: 18px; background: linear-gradient(135deg, #527cf0cc, #6e4fdbcc); box-shadow: 0 0 28px #5f8bff55, inset 0 1px #ffffff66; color: #eef4ff; text-align: center; transform: translate(-50%, -50%) rotateX(16deg) rotateY(-18deg) rotateZ(8deg); transform-style: preserve-3d; animation: core-float 5s ease-in-out infinite; }
@@ -198,11 +406,12 @@ HTML = """<!doctype html>
     #progress-card .progress-head { order: 2; }
     #progress-card > progress { order: 3; }
     #progress-card > #phase { order: 4; }
-    #progress-card > .log-head { order: 5; }
-    #progress-card > #logs { order: 6; }
-    #progress-card > .batch-queue-card { order: 7; }
-    #progress-card > .run-plan { order: 8; }
-    #progress-card > .telemetry-grid { order: 9; }
+    #progress-card > .model-control { order: 5; }
+    #progress-card > .log-head { order: 6; }
+    #progress-card > #logs { order: 7; }
+    #progress-card > .batch-queue-card { order: 8; }
+    #progress-card > .run-plan { order: 9; }
+    #progress-card > .telemetry-grid { order: 10; }
     .studio-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(270px, .72fr); gap: 16px; align-items: start; }
     .studio-sidebar { display: grid; gap: 16px; position: sticky; top: 18px; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding: 24px; margin-bottom: 16px; box-shadow: 0 20px 60px #0000002b, inset 0 1px #ffffff0a; backdrop-filter: blur(16px); }
@@ -366,6 +575,12 @@ HTML = """<!doctype html>
     .telemetry-value { display: block; overflow: hidden; color: #e1eaff; font: 750 17px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
     .telemetry-sub { display: block; margin-top: 6px; overflow: hidden; color: #8293b0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
     .telemetry-foot { margin-top: 10px; color: #7489aa; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .model-control { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 11px 13px; border: 1px solid #2d4266; border-radius: 12px; background: linear-gradient(145deg, #12213d, #0d182c); }
+    .model-control-copy { min-width: 0; }
+    .model-control-copy strong, .model-control-copy span { display: block; }
+    .model-control-copy strong { font-size: 12px; }
+    .model-control-copy span { margin-top: 4px; overflow: hidden; color: #8293b0; font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+    .model-restart { flex: 0 0 auto; }
     .row { display: flex; justify-content: space-between; gap: 18px; align-items: center; }
     .status { padding: 6px 10px; border: 1px solid #3e5d9b; border-radius: 999px; background: #1a2e5b; color: #a8c0ff; font-size: 12px; font-weight: 700; }
     .error { color: #ff9b9b; white-space: pre-wrap; }
@@ -447,6 +662,9 @@ HTML = """<!doctype html>
     .hint { color: #718aa0; }
     .local-pill, .tag { border-color: #d3e5ef; background: #ffffffc9; color: #608098; box-shadow: 0 4px 15px #5d96b312; }
     .local-pill span { background: #45b58d; }
+    .top-action { border-color: #c5dce8; background: #ffffffd9; color: #4d7c96; box-shadow: 0 4px 15px #5d96b312; }
+    .top-action:hover { border-color: #83bdd8; background: #eaf7fc; color: #2b7eae; box-shadow: none; }
+    .top-action:disabled { background: #eef5f8; color: #91a9b7; }
     .card { background: var(--panel); border-color: #dbeaf3; box-shadow: 0 18px 45px #4d83a512, inset 0 1px #ffffff; backdrop-filter: blur(13px); }
     .section-label { color: #86a1b5; }
     .upload-zone { border-color: #a7ccdf; background: linear-gradient(135deg, #f8fcff, #edf7fc); }
@@ -539,6 +757,8 @@ HTML = """<!doctype html>
     .telemetry-label { color: #7b96a8; }
     .telemetry-value { color: #26516b; }
     .telemetry-sub, .telemetry-foot { color: #7891a3; }
+    .model-control { border-color: #d6e7ef; background: linear-gradient(145deg, #f8fcfe, #eef8fc); }
+    .model-control-copy span { color: #7891a3; }
     .log-head strong { color: #244b66; }
     .log-live { color: #3988b5; }
     .log-count { border-color: #d6e7ef; color: #7891a3; background: #f8fcfe; }
@@ -592,7 +812,10 @@ HTML = """<!doctype html>
           </div>
         </div>
         <div class="hero-tools">
-          <div class="local-pill"><span></span>本地运行 · 不上传云端</div>
+          <div class="hero-actions">
+            <button id="release-vram" class="top-action" type="button" title="只停止视觉模型容器，WebUI 保持在线">释放显存</button>
+            <div class="local-pill"><span></span>本地运行 · 不上传云端</div>
+          </div>
         </div>
       </div>
     </header>
@@ -773,6 +996,14 @@ HTML = """<!doctype html>
       </div>
       <progress id="progress" value="0" max="100"></progress>
       <div id="phase" class="small">尚未开始</div>
+      <div id="model-control" class="model-control" hidden>
+        <div class="model-control-copy">
+          <div class="section-label">VLLM CONTROL</div>
+          <strong>视觉模型服务</strong>
+          <span id="model-control-status">模型 API 未就绪，可重新启动。</span>
+        </div>
+        <button id="restart-vllm" class="mini-button model-restart" type="button">重启 vLLM</button>
+      </div>
       <div class="run-plan" aria-label="任务计划">
         <div class="plan-step" data-plan-step="0"><span class="plan-index">01</span><strong>准备与截取</strong><span>生成分析输入</span></div>
         <div class="plan-step" data-plan-step="1"><span class="plan-index">02</span><strong id="plan-title-1">ASR + 对齐</strong><span id="plan-copy-1">语音与词级时间戳</span></div>
@@ -816,6 +1047,9 @@ HTML = """<!doctype html>
     const progress = document.getElementById("progress");
     const progressPercent = document.getElementById("progress-percent");
     const phase = document.getElementById("phase");
+    const modelControl = document.getElementById("model-control");
+    const modelControlStatus = document.getElementById("model-control-status");
+    const restartVllmButton = document.getElementById("restart-vllm");
     const planSteps = Array.from(document.querySelectorAll("[data-plan-step]"));
     const logs = document.getElementById("logs");
     const logCount = document.getElementById("log-count");
@@ -834,6 +1068,7 @@ HTML = """<!doctype html>
     const startSec = document.getElementById("start-sec");
     const endSec = document.getElementById("end-sec");
     const releaseGpu = document.getElementById("release-gpu");
+    const releaseVramButton = document.getElementById("release-vram");
     const analysisMode = document.getElementById("analysis-mode");
     const inputTitle = document.getElementById("input-title");
     const modeTag = document.getElementById("mode-tag");
@@ -900,6 +1135,7 @@ HTML = """<!doctype html>
     let batchFiles = [];
     let activeBatchId = null;
     let draggedBatchIndex = null;
+    let modelPollTimer = null;
 
     function updateModePresentation() {
       const subtitle = analysisMode.value === "subtitle";
@@ -1411,6 +1647,61 @@ HTML = """<!doctype html>
       }
     });
 
+    function updateVramButton(state) {
+      const modelState = state || {};
+      const busy = modelState.status === "releasing" || modelState.status === "starting";
+      releaseVramButton.disabled = busy;
+      releaseVramButton.textContent = modelState.status === "releasing" ? "释放中…" : "释放显存";
+      releaseVramButton.title = modelState.message || "只停止视觉模型容器，WebUI 保持在线";
+    }
+
+    function scheduleModelStatePoll(delay) {
+      if (modelPollTimer) clearTimeout(modelPollTimer);
+      modelPollTimer = setTimeout(refreshModelState, delay || 1000);
+    }
+
+    async function refreshModelState() {
+      try {
+        const response = await fetch("/api/model");
+        const state = await response.json();
+        updateVramButton(state);
+        if (state.status === "starting" || state.status === "releasing") scheduleModelStatePoll(1000);
+        else modelPollTimer = null;
+      } catch (_error) {
+        scheduleModelStatePoll(3000);
+      }
+    }
+
+    releaseVramButton.addEventListener("click", async function() {
+      if (!window.confirm("只停止视觉模型并释放显存，WebUI 会保持在线。继续吗？")) return;
+      updateVramButton({ status: "releasing", message: "正在释放显存，WebUI 保持在线。" });
+      try {
+        const response = await fetch("/api/model/release", { method: "POST" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "释放显存失败");
+        updateVramButton(payload);
+        scheduleModelStatePoll(500);
+      } catch (error) {
+        updateVramButton({ status: "failed", message: String(error) });
+        window.alert("释放显存失败：" + String(error));
+      }
+    });
+
+    restartVllmButton.addEventListener("click", async function() {
+      if (!window.confirm("只重新启动视觉模型 vLLM，不会取消当前任务或清空队列。继续吗？")) return;
+      restartVllmButton.disabled = true;
+      modelControlStatus.textContent = "正在请求重启，当前任务队列保持不变。";
+      try {
+        const response = await fetch("/api/model/restart", { method: "POST" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "vLLM 重启失败");
+        updateModelControl({ status: "running", phase: "等待视觉模型", logs: [] }, payload);
+      } catch (error) {
+        restartVllmButton.disabled = false;
+        modelControlStatus.textContent = "重启请求失败：" + String(error);
+      }
+    });
+
     function formatMegabytes(value) {
       if (!Number.isFinite(Number(value))) return "--";
       const mb = Number(value);
@@ -1465,6 +1756,49 @@ HTML = """<!doctype html>
       });
     }
 
+    function jobWaitingForVisualModel(job) {
+      if (!job || job.status !== "running") return false;
+      const phaseText = String(job.phase || "");
+      if (["视觉分析", "识别字幕", "读取字幕", "高清逐秒"].some(function(marker) { return phaseText.includes(marker); }) && !phaseText.includes("等待")) return false;
+      const recentLogs = (job.logs || []).slice(-20).join(" ");
+      const text = phaseText + " " + recentLogs;
+      return ["等待 MiniCPM", "等待视觉模型", "等待视觉服务", "API 就绪", "启动视觉模型", "视觉模型服务"]
+        .some(function(marker) { return text.includes(marker); });
+    }
+
+    function updateModelControl(job, modelState) {
+      const state = modelState || (job && job.model_restart) || {};
+      updateVramButton(state);
+      const waiting = jobWaitingForVisualModel(job);
+      const restarting = state.status === "starting";
+      const failed = state.status === "failed";
+      const ready = state.status === "ready";
+      modelControl.hidden = !(waiting || restarting || failed);
+      if (modelControl.hidden) return;
+      restartVllmButton.disabled = restarting || ready;
+      restartVllmButton.textContent = restarting ? "启动中…" : (failed ? "再次启动" : (ready ? "已启动" : "重启 vLLM"));
+      if (restarting) {
+        modelControlStatus.textContent = state.message || "正在启动 vLLM，当前任务队列保持不变。";
+      } else if (failed) {
+        modelControlStatus.textContent = state.message || "视觉模型启动失败，可再次尝试。";
+      } else if (ready) {
+        modelControlStatus.textContent = state.message || "vLLM API 已就绪，任务会继续。";
+      } else {
+        modelControlStatus.textContent = "视觉模型 API 未就绪，可重新启动。";
+      }
+    }
+
+    function jobLogLines(job) {
+      const lines = Array.isArray(job && job.logs) ? job.logs.slice() : [];
+      const modelState = (job && job.model_restart) || {};
+      const modelLogs = Array.isArray(modelState.logs) ? modelState.logs : [];
+      if (modelLogs.length) {
+        lines.push("", "— vLLM 服务控制 —");
+        lines.push.apply(lines, modelLogs);
+      }
+      return lines;
+    }
+
     function showJob(job) {
       progressCard.hidden = false;
       batchQueueCard.hidden = true;
@@ -1477,8 +1811,10 @@ HTML = """<!doctype html>
       phase.textContent = percent.toFixed(0) + "% · " + (job.phase || "处理中");
       updatePlan(job, percent);
       updateGpu(job.gpu);
-      logs.textContent = (job.logs || []).join("\\n");
-      logCount.textContent = (job.logs || []).length + " 行";
+      updateModelControl(job, job.model_restart);
+      const logLines = jobLogLines(job);
+      logs.textContent = logLines.join("\\n");
+      logCount.textContent = logLines.length + " 行";
       logs.scrollTop = logs.scrollHeight;
       if (job.output_dir) {
         outputDir.textContent = job.output_dir;
@@ -1557,6 +1893,10 @@ HTML = """<!doctype html>
       batchQueueCount.textContent = completed + " / " + total + " 已完成 · " + (Number(batch.failed) || 0) + " 个失败";
       batchQueueItems.innerHTML = "";
       const jobs = Array.isArray(batch.jobs) ? batch.jobs : [];
+      updateModelControl(
+        jobs.find(function(job) { return job.status === "running"; }) || { status: batch.status, phase: batch.phase, logs: [] },
+        batch.model_restart,
+      );
       const pendingJobs = jobs.filter(function(job) { return job.status === "queued"; });
       jobs.forEach(function(job, index) {
         const item = document.createElement("div");
@@ -1620,6 +1960,8 @@ HTML = """<!doctype html>
         logLines.push(String(index + 1).padStart(2, "0") + " · " + (job.filename || "视频") + " · " + batchStatusLabel(job));
         if (job.error) logLines.push("   错误：" + job.error);
       });
+      const modelLogs = batch.model_restart && Array.isArray(batch.model_restart.logs) ? batch.model_restart.logs : [];
+      if (modelLogs.length) logLines.push("", "— vLLM 服务控制 —", ...modelLogs);
       logs.textContent = logLines.join("\\n");
       logCount.textContent = logLines.length + " 行";
       logs.scrollTop = logs.scrollHeight;
@@ -1702,6 +2044,7 @@ HTML = """<!doctype html>
         errorBox.textContent = String(error);
       }
     });
+    refreshModelState();
   </script>
 </body>
 </html>
@@ -1930,6 +2273,7 @@ def batch_snapshot(batch_id: str) -> dict | None:
         if str(item.get("batch_id", "")) == batch_id
     ]
     batch["gpu"] = gpu_status()
+    batch["model_restart"] = model_restart_snapshot()
     return batch
 
 
@@ -2559,6 +2903,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_bytes(logo.read_bytes(), "image/png")
             return
+        if parsed.path == "/api/model":
+            self.send_json(model_restart_snapshot())
+            return
         if parsed.path == "/api/queue":
             with JOBS_LOCK:
                 active = next(
@@ -2573,6 +2920,7 @@ class Handler(BaseHTTPRequestHandler):
                     "queue": pending_queue_snapshot(),
                     "active_job": active,
                     "gpu": gpu_status(),
+                    "model_restart": model_restart_snapshot(),
                 }
             )
             return
@@ -2598,9 +2946,10 @@ class Handler(BaseHTTPRequestHandler):
             if not result:
                 self.send_json({"error": "任务不存在"}, 404)
                 return
-            result["files"] = files_for_job(job_id)
-            result["gpu"] = gpu_status()
-            result.pop("thread", None)
+                result["files"] = files_for_job(job_id)
+                result["gpu"] = gpu_status()
+                result["model_restart"] = model_restart_snapshot()
+                result.pop("thread", None)
             self.send_json(result)
             return
 
@@ -2633,6 +2982,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/model/release":
+            try:
+                self.send_json(release_model_memory(), 202)
+            except RuntimeError as exc:
+                self.send_json({"error": str(exc), "model_restart": model_restart_snapshot()}, 409)
+            return
+        if parsed.path == "/api/model/restart":
+            try:
+                self.send_json(start_model_restart(), 202)
+            except RuntimeError as exc:
+                self.send_json({"error": str(exc), "model_restart": model_restart_snapshot()}, 409)
+            return
         reorder_match = re.fullmatch(r"/api/batches/([^/]+)/reorder", parsed.path)
         if reorder_match:
             batch_id = unquote(reorder_match.group(1))
