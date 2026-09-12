@@ -1306,7 +1306,7 @@ HTML = """<!doctype html>
         logLines.push(String(index + 1).padStart(2, "0") + " · " + (job.filename || "视频") + " · " + batchStatusLabel(job));
         if (job.error) logLines.push("   错误：" + job.error);
       });
-      logs.textContent = logLines.join("\n");
+      logs.textContent = logLines.join("\\n");
       logs.scrollTop = logs.scrollHeight;
       errorBox.textContent = Number(batch.failed) > 0 ? (Number(batch.failed) + " 个视频处理失败，已跳过，其余任务继续执行。") : "";
       if (batch.status === "done" || batch.status === "partial") {
