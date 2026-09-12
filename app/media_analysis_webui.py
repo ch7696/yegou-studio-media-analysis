@@ -345,7 +345,8 @@ HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>野构 Studio · 视频导演拉片工作台</title>
+  <title>野构 Studio · 媒体分析工作台</title>
+  <link rel="icon" type="image/png" href="/assets/brand/yegou-studio-logo.png">
   <style>
     :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --ink: #edf3ff; --muted: #91a1bd; --line: #273755; --blue: #6f96ff; --blue-dark: #4d72e8; --cyan: #62e3ff; --soft: #111d34; --panel: rgba(15, 25, 46, .86); }
     * { box-sizing: border-box; }
@@ -954,6 +955,112 @@ HTML = """<!doctype html>
       .flow-item { padding: 10px 8px; }
       .flow-item strong { font-size: 10px; }
     }
+
+    /* Soft blue-gray studio skin: larger type, restrained contrast, near-square surfaces. */
+    :root {
+      --ui-font: "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Segoe UI", sans-serif;
+      --studio-bg: #e8eef2;
+      --studio-surface: #eef3f6;
+      --studio-surface-strong: #f1f5f7;
+      --studio-line: #cfdbe3;
+      --studio-ink: #294257;
+      --studio-muted: #6f8494;
+      --studio-blue: #5a91bd;
+    }
+    html, body, button, input, select, textarea { font-family: var(--ui-font) !important; }
+    body { background: var(--studio-bg) !important; color: var(--studio-ink) !important; font-size: 15px; }
+    body::before { background-image: linear-gradient(#7898aa12 1px, transparent 1px), linear-gradient(90deg, #7898aa12 1px, transparent 1px) !important; }
+    .ripple-ring { border-color: #6d9eb63b !important; }
+    main.app-shell { background: var(--studio-bg) !important; }
+    .hero { background: #eaf0f3 !important; border-bottom-color: var(--studio-line) !important; }
+    .app-sidebar { background: #e5ebef !important; border-right-color: var(--studio-line) !important; }
+    .app-content { background: var(--studio-bg) !important; }
+    .brand-name, h1, .input-card .card-head h2, .pipeline-card .card-head h2, .studio-sidebar .side-head h2, .model-view-head h2 { color: #294257 !important; }
+    .brand-name { font-size: 18px !important; }
+    h1 { font-size: 27px !important; letter-spacing: -.035em !important; }
+    .side-nav-item { color: #5f7484 !important; font-size: 15px !important; border-radius: 3px !important; }
+    .side-nav-item:hover { background: #dce7ed !important; color: #416f91 !important; }
+    .side-nav-item.active { background: #d6e4ec !important; border-left-color: #5a91bd !important; color: #356987 !important; }
+    .nav-icon { border-radius: 2px !important; border-color: #c8d6de !important; background: #edf2f4 !important; color: #617b8d !important; }
+    .side-nav-item.active .nav-icon { border-color: #adc6d5 !important; background: #c8dce7 !important; color: #416f91 !important; }
+    .sidebar-foot { color: #718897 !important; }
+    .sidebar-foot span { color: #91a4b0 !important; }
+    .local-pill, .tag, .top-action { border-radius: 3px !important; border-color: #c5d4dc !important; background: #e9f0f3 !important; color: #587284 !important; box-shadow: 0 3px 12px #516f8010 !important; }
+    .top-action:hover { border-color: #8eafc2 !important; background: #e0ebf0 !important; color: #416f91 !important; }
+    .card { border-radius: 3px !important; border-color: var(--studio-line) !important; background: var(--studio-surface) !important; box-shadow: 0 6px 18px #526f7d0b !important; backdrop-filter: none !important; }
+    .section-label { color: #78909f !important; font-size: 12px !important; letter-spacing: .04em !important; }
+    .mode-card { min-height: 94px !important; border-radius: 3px !important; border-color: #cbd9e1 !important; background: var(--studio-surface-strong) !important; color: var(--studio-ink) !important; box-shadow: 0 4px 12px #526f7d0b !important; }
+    .mode-card:hover { border-color: #94b1c2 !important; background: #f0f5f7 !important; box-shadow: 0 6px 15px #526f7d10 !important; }
+    .mode-card.selected { border-color: #699bbd !important; box-shadow: 0 0 0 1px #699bbd33, 0 5px 15px #526f7d10 !important; }
+    .mode-card-icon { border-radius: 3px !important; border-color: #b8d0dc !important; background: #dfeaf0 !important; color: #4e86aa !important; }
+    .mode-card-icon.subtitle { border-color: #bdd8d8 !important; background: #e2eeee !important; color: #568f92 !important; }
+    .mode-card strong { color: #314f64 !important; font-size: 17px !important; }
+    .mode-card small { color: #718794 !important; font-size: 13px !important; }
+    .mode-radio { border-radius: 50% !important; background: #eaf0f2 !important; }
+    .upload-zone { min-height: 112px !important; border-radius: 3px !important; border-color: #9fb9c8 !important; background: #edf3f6 !important; }
+    .upload-zone:hover, .upload-zone.dragging { border-color: #6d9dbb !important; background: #e5eef2 !important; box-shadow: 0 6px 16px #526f7d13 !important; }
+    .upload-icon { border-radius: 3px !important; border-color: #adc8d6 !important; background: #dce9ee !important; color: #4f87aa !important; }
+    .upload-copy strong { color: #38576a !important; font-size: 16px !important; }
+    .upload-copy span { color: #718794 !important; font-size: 13px !important; }
+    .upload-action { border-radius: 3px !important; border-color: #c5d5dd !important; background: #e8eff2 !important; color: #526f80 !important; font-size: 14px !important; }
+    .file-name { border-radius: 3px !important; border-color: #cbd9e1 !important; background: #edf2f4 !important; color: #456476 !important; font-size: 14px !important; box-shadow: 0 3px 10px #526f7d09 !important; }
+    .mini-button, .back-home { border-radius: 3px !important; border-color: #c2d3dc !important; background: #e9f0f3 !important; color: #587284 !important; font-size: 13px !important; }
+    .mini-button:hover, .back-home:hover { border-color: #8eafc2 !important; background: #dfeaf0 !important; color: #416f91 !important; }
+    .range-grid label, .mode-option label { color: #617a89 !important; font-size: 14px !important; }
+    .range-grid input, .mode-option select { border-radius: 3px !important; border-color: #c4d4dc !important; background: #eaf0f3 !important; color: #365567 !important; font-size: 14px !important; }
+    .release-option { border-radius: 3px !important; border-color: #cbd9e1 !important; background: #e7eef1 !important; }
+    .release-option small { color: #718794 !important; font-size: 12px !important; }
+    #start { min-height: 52px !important; border-radius: 3px !important; background: #5f96bd !important; box-shadow: 0 6px 15px #527f9930 !important; font-size: 16px !important; }
+    #start:hover { background: #5689ad !important; box-shadow: 0 8px 18px #527f9938 !important; }
+    .studio-sidebar .card { background: transparent !important; }
+    .delivery-card { border-top-color: #cbd9e1 !important; }
+    .delivery-stat { border-radius: 3px !important; border-color: #c7d6de !important; background: #e5edf0 !important; }
+    .delivery-stat strong { color: #5c91b5 !important; }
+    .delivery-stat span, .delivery-item { color: #617b8a !important; font-size: 13px !important; }
+    .delivery-item::before { border-radius: 2px !important; border-color: #a9c1cc !important; color: #5a9a7e !important; }
+    .flow-item { min-height: 70px !important; border-radius: 3px !important; border-color: #cbd9e1 !important; background: #edf2f4 !important; box-shadow: 0 4px 12px #526f7d09 !important; }
+    .flow-item strong { color: #476477 !important; font-size: 14px !important; }
+    .flow-num { border-radius: 2px !important; background: #dbe7ec !important; color: #5f8aa6 !important; }
+    #progress-card { background: transparent !important; }
+    #progress-card .row strong, #progress-card .progress-head strong, .log-head strong { color: #456476 !important; font-size: 15px !important; }
+    #progress-card .status { border-radius: 3px !important; border-color: #a9c6d2 !important; background: #dfebef !important; color: #4e829c !important; font-size: 12px !important; }
+    #progress-card .progress-percent { color: #5a91bd !important; font-size: 28px !important; }
+    progress { border-radius: 2px !important; }
+    .telemetry-item { min-height: 86px !important; border-radius: 3px !important; border-color: #cbd9e1 !important; background: #edf2f4 !important; box-shadow: 0 3px 10px #526f7d09 !important; }
+    .telemetry-label { color: #78909f !important; font-size: 12px !important; }
+    .telemetry-value { color: #3f6073 !important; font-size: 20px !important; }
+    .telemetry-sub { color: #718794 !important; font-size: 12px !important; }
+    .model-control { border-radius: 3px !important; border-color: #cbd9e1 !important; background: #e7eef1 !important; }
+    #logs { border-radius: 3px !important; border-color: #cbd9e1 !important; background: #e3ebee !important; color: #526f80 !important; font-size: 13px !important; }
+    .log-live, .log-count { border-radius: 3px !important; }
+    .log-live { color: #5c8ea8 !important; }
+    .log-count { border-color: #cbd9e1 !important; background: #e7eef1 !important; color: #718794 !important; }
+    #result-card { background: var(--studio-surface) !important; }
+    #files li, code { border-radius: 3px !important; border-color: #cbd9e1 !important; background: #e7eef1 !important; color: #526f80 !important; }
+    .model-view[hidden] { display: none !important; }
+    .model-view { width: 100%; max-width: 1360px; margin: 0 auto; }
+    .model-view-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+    .model-view-head h2 { margin: 0; font-size: 26px !important; }
+    .model-page-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
+    .model-view .model-card, .model-service-card { padding: 22px !important; border-radius: 3px !important; border: 1px solid var(--studio-line) !important; background: var(--studio-surface) !important; box-shadow: 0 6px 18px #526f7d0b !important; }
+    .model-view .model-stack { gap: 12px; }
+    .model-view .model-row { min-height: 84px; padding: 15px; border-radius: 3px !important; border-color: #c7d6de !important; background: #e8eff2 !important; box-shadow: none !important; }
+    .model-view .model-row:hover { border-color: #91afbf !important; transform: none; box-shadow: none !important; }
+    .model-mark { border-radius: 2px !important; border-color: #aec6d1 !important; background: #dce8ed !important; color: #4e86a7 !important; }
+    .model-mark.audio { border-color: #b5d1d0 !important; background: #deebea !important; color: #568d90 !important; }
+    .model-mark.align { border-color: #bdc4d8 !important; background: #e5e8f0 !important; color: #6c7899 !important; }
+    .model-info small { color: #6f8794 !important; font-size: 12px !important; }
+    .model-info strong { color: #38576a !important; font-size: 15px !important; }
+    .model-info em { color: #718794 !important; font-size: 12px !important; }
+    .model-view .gpu-note { display: flex !important; border-top-color: #cbd9e1 !important; color: #718794 !important; font-size: 13px !important; }
+    .model-service-card h3 { margin: 8px 0 18px; color: #38576a; font-size: 18px; }
+    .model-service-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 0; border-top: 1px solid #d2dee5; color: #718794; font-size: 13px; }
+    .model-service-row strong { color: #456476; font-size: 14px; font-weight: 650; text-align: right; }
+    .model-service-card p { margin: 18px 0 0; padding-top: 15px; border-top: 1px solid #d2dee5; color: #718794; font-size: 13px; line-height: 1.7; }
+    .studio-footer { color: #7f949f !important; font-size: 12px !important; }
+    .studio-footer span:last-child { color: #718794 !important; font-family: var(--ui-font) !important; }
+    @media (max-width: 920px) { .model-page-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { .model-view-head h2 { font-size: 22px !important; } .model-page-grid { gap: 14px; } }
   </style>
 </head>
 <body>
@@ -965,13 +1072,13 @@ HTML = """<!doctype html>
   </div>
   <main class="app-shell">
     <header class="hero">
-      <div class="eyebrow">野构 STUDIO · LOCAL MEDIA WORKBENCH</div>
+      <div class="eyebrow">野构 Studio · 本地媒体工作台</div>
       <div class="hero-row">
         <div class="brand-lockup">
           <img class="brand-logo" src="/assets/brand/yegou-studio-logo.png" alt="野构 Studio 创意标志">
           <div class="brand-copy">
             <div class="brand-name">野构 Studio</div>
-            <h1 id="hero-title">视频媒体分析工作台 <span class="title-mark">MEDIA LAB</span></h1>
+            <h1 id="hero-title">视频媒体分析工作台</h1>
             <p id="hero-hint" class="hint">选择一个工作入口，把视频整理成可回看、可下载、可继续加工的资料。</p>
           </div>
         </div>
@@ -1002,7 +1109,7 @@ HTML = """<!doctype html>
           <span class="nav-icon">⚙</span><span>设置</span>
         </button>
       </nav>
-      <div class="sidebar-foot">野构 STUDIO<span>MEDIA LAB</span></div>
+      <div class="sidebar-foot">野构 Studio<span>媒体分析</span></div>
     </aside>
 
     <div class="app-content">
@@ -1042,7 +1149,7 @@ HTML = """<!doctype html>
       <div class="studio-main">
     <section class="card input-card">
       <div class="card-head">
-        <div><div class="section-label">NEW TASK</div><h2 id="input-title">新建任务</h2></div>
+        <div><div class="section-label">创建任务</div><h2 id="input-title">新建任务</h2></div>
         <span id="mode-tag" class="tag">导演拉片模式</span>
       </div>
       <form id="upload-form">
@@ -1082,7 +1189,7 @@ HTML = """<!doctype html>
         <p id="batch-help" class="batch-help" hidden>整片 · 可排序 · 失败跳过</p>
         <div id="preview-panel" class="preview-panel" hidden>
           <div class="preview-top">
-            <div><div class="section-label">VISUAL RANGE</div><h3>可视时间轴</h3></div>
+            <div><div class="section-label">画面范围</div><h3>可视时间轴</h3></div>
             <div class="preview-meta"><span id="preview-duration">总时长 --:--</span><span id="preview-time">当前 --:--.-</span></div>
           </div>
           <div class="video-frame">
@@ -1133,11 +1240,94 @@ HTML = """<!doctype html>
     </section>
       </div>
       <aside class="studio-sidebar">
-        <section class="card model-card">
+        <section class="card delivery-card">
           <div class="side-head">
-            <div><div class="section-label">LOCAL MODELS</div><h2>本地模型</h2></div>
-            <span class="live-badge">GPU READY</span>
+            <div><div class="section-label">输出</div><h2>输出</h2></div>
+            <span class="tag">V1</span>
           </div>
+          <div class="delivery-stat"><strong id="delivery-count">04</strong><span id="delivery-copy">份主文档<br>可下载、可继续加工</span></div>
+          <div class="delivery-list">
+            <div id="delivery-item-1" class="delivery-item">纯视觉分析</div>
+            <div id="delivery-item-2" class="delivery-item">纯 ASR 与时间戳</div>
+            <div id="delivery-item-3" class="delivery-item">代码综合时间线</div>
+            <div id="delivery-item-4" class="delivery-item">最终导演分析模板</div>
+          </div>
+          <div class="path-label">默认输出</div>
+          <div class="side-path">由 MEDIA_OUTPUT_ROOT 配置</div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="card pipeline-card">
+      <div class="card-head">
+        <div><div class="section-label">流程</div><h2>处理流程</h2></div>
+      </div>
+      <div class="flow">
+        <div class="flow-item"><span class="flow-num">01</span><strong>截取范围</strong><span>按开始秒和结束秒生成分析片段。</span></div>
+        <div class="flow-item"><span class="flow-num">02</span><strong id="flow-step-2-title">声音时间线</strong><span id="flow-step-2-copy">ASR + ForcedAligner 生成旁白和时间戳。</span></div>
+        <div class="flow-item"><span class="flow-num">03</span><strong id="flow-step-3-title">视觉拉片</strong><span id="flow-step-3-copy">1 秒高清帧、20 秒联系图、5 秒细节组。</span></div>
+        <div class="flow-item"><span class="flow-num">04</span><strong id="flow-step-4-title">整理下载</strong><span id="flow-step-4-copy">输出四份主文档及 SRT/VTT 字幕。</span></div>
+      </div>
+      <p id="pipeline-note" class="small">前三份是可复核的机器产物；第四份是解释层。没有额外提交最终分析时，第四份会显示待处理模板。</p>
+    </section>
+
+    <section id="progress-card" class="card" hidden>
+      <div class="row">
+        <div><div class="section-label">系统状态</div><strong id="filename">等待任务</strong></div>
+        <span id="status" class="status">等待中</span>
+      </div>
+      <div class="progress-head">
+        <div><div class="section-label">实时进度</div><strong>处理进度</strong></div>
+        <span id="progress-percent" class="progress-percent">0%</span>
+      </div>
+      <progress id="progress" value="0" max="100"></progress>
+      <div id="phase" class="small">尚未开始</div>
+      <div id="model-control" class="model-control" hidden>
+        <div class="model-control-copy">
+          <div class="section-label">服务控制</div>
+          <strong>视觉模型服务</strong>
+          <span id="model-control-status">模型 API 未就绪，可重新启动。</span>
+        </div>
+        <button id="restart-vllm" class="mini-button model-restart" type="button">重启 vLLM</button>
+      </div>
+      <div class="run-plan" aria-label="任务计划">
+        <div class="plan-step" data-plan-step="0"><span class="plan-index">01</span><strong>准备与截取</strong><span>生成分析输入</span></div>
+        <div class="plan-step" data-plan-step="1"><span class="plan-index">02</span><strong id="plan-title-1">ASR + 对齐</strong><span id="plan-copy-1">语音与词级时间戳</span></div>
+        <div class="plan-step" data-plan-step="2"><span class="plan-index">03</span><strong id="plan-title-2">视觉拉片</strong><span id="plan-copy-2">1fps / 20秒 / 5秒</span></div>
+        <div class="plan-step" data-plan-step="3"><span class="plan-index">04</span><strong id="plan-title-3">综合打包</strong><span id="plan-copy-3">四份文档与字幕</span></div>
+      </div>
+      <div class="telemetry-grid">
+        <div class="telemetry-item"><span class="telemetry-label">GPU 利用率</span><strong id="gpu-utilization" class="telemetry-value">--</strong><span id="gpu-utilization-sub" class="telemetry-sub">等待采样</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">温度 / 功耗</span><strong id="gpu-thermal" class="telemetry-value">--</strong><span id="gpu-power" class="telemetry-sub">功耗 --</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">运行状态</span><strong id="runtime-status" class="telemetry-value">正常</strong><span id="runtime-status-sub" class="telemetry-sub">等待任务</span></div>
+      </div>
+      <div class="log-head"><div><div class="section-label">运行日志</div><strong>运行日志</strong></div><span class="log-live">实时</span><span id="log-count" class="log-count">0 行</span></div>
+      <pre id="logs"></pre>
+      <section id="batch-queue-card" class="batch-queue-card" hidden>
+        <div class="batch-queue-head"><strong>批量队列</strong><span id="batch-queue-count">0 / 0</span></div>
+        <p class="batch-queue-copy">等待中的视频可以用 ↑ ↓ 调整顺序；当前正在处理的视频不会被移动。</p>
+        <div id="batch-queue-items" class="batch-queue-items"></div>
+      </section>
+    </section>
+
+    <section id="result-card" class="card" hidden>
+      <div class="result-head"><div><div class="section-label">输出</div><h2>输出内容</h2></div><span id="output-count" class="output-count">0</span></div>
+      <p>输出目录：</p>
+      <code id="output-dir"></code>
+      <ul id="files"></ul>
+      <p id="error" class="error"></p>
+    </section>
+    <div class="studio-footer"><span>野构 Studio · 媒体分析</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
+    </div>
+
+    <section id="model-view" class="model-view" hidden>
+      <div class="model-view-head">
+        <div><div class="section-label">模型</div><h2>本地模型</h2></div>
+        <span id="model-page-status" class="live-badge">待命</span>
+      </div>
+      <div class="model-page-grid">
+        <section class="card model-card">
           <div class="model-stack">
             <div class="model-row">
               <span class="model-mark">V</span>
@@ -1154,87 +1344,16 @@ HTML = """<!doctype html>
           </div>
           <div id="gpu-note" class="gpu-note">模型按 ASR → 视觉 → 整理顺序切换，尽量避免多个大模型同时占用显存。</div>
         </section>
-        <section class="card delivery-card">
-          <div class="side-head">
-            <div><div class="section-label">DELIVERY</div><h2>输出</h2></div>
-            <span class="tag">V1</span>
-          </div>
-          <div class="delivery-stat"><strong id="delivery-count">04</strong><span id="delivery-copy">份主文档<br>可下载、可继续加工</span></div>
-          <div class="delivery-list">
-            <div id="delivery-item-1" class="delivery-item">纯视觉分析</div>
-            <div id="delivery-item-2" class="delivery-item">纯 ASR 与时间戳</div>
-            <div id="delivery-item-3" class="delivery-item">代码综合时间线</div>
-            <div id="delivery-item-4" class="delivery-item">最终导演分析模板</div>
-          </div>
-          <div class="path-label">DEFAULT OUTPUT</div>
-          <div class="side-path">由 MEDIA_OUTPUT_ROOT 配置</div>
+        <section class="card model-service-card">
+          <div class="section-label">服务状态</div>
+          <h3>视觉模型服务</h3>
+          <div class="model-service-row"><span>接口</span><strong>本地 vLLM · 8002</strong></div>
+          <div class="model-service-row"><span>上下文</span><strong>32K</strong></div>
+          <div class="model-service-row"><span>采样策略</span><strong>1 秒一帧 · 20 秒联系图</strong></div>
+          <p>模型按任务需要启动；分析完成后可从顶部释放显存。</p>
         </section>
-      </aside>
-    </div>
-
-    <section class="card pipeline-card">
-      <div class="card-head">
-        <div><div class="section-label">PIPELINE</div><h2>处理流程</h2></div>
       </div>
-      <div class="flow">
-        <div class="flow-item"><span class="flow-num">01</span><strong>截取范围</strong><span>按开始秒和结束秒生成分析片段。</span></div>
-        <div class="flow-item"><span class="flow-num">02</span><strong id="flow-step-2-title">声音时间线</strong><span id="flow-step-2-copy">ASR + ForcedAligner 生成旁白和时间戳。</span></div>
-        <div class="flow-item"><span class="flow-num">03</span><strong id="flow-step-3-title">视觉拉片</strong><span id="flow-step-3-copy">1 秒高清帧、20 秒联系图、5 秒细节组。</span></div>
-        <div class="flow-item"><span class="flow-num">04</span><strong id="flow-step-4-title">整理下载</strong><span id="flow-step-4-copy">输出四份主文档及 SRT/VTT 字幕。</span></div>
-      </div>
-      <p id="pipeline-note" class="small">前三份是可复核的机器产物；第四份是解释层。没有额外提交最终分析时，第四份会显示待处理模板。</p>
     </section>
-
-    <section id="progress-card" class="card" hidden>
-      <div class="row">
-        <div><div class="section-label">SYSTEM STATUS</div><strong id="filename">等待任务</strong></div>
-        <span id="status" class="status">等待中</span>
-      </div>
-      <div class="progress-head">
-        <div><div class="section-label">LIVE PROCESS</div><strong>处理进度</strong></div>
-        <span id="progress-percent" class="progress-percent">0%</span>
-      </div>
-      <progress id="progress" value="0" max="100"></progress>
-      <div id="phase" class="small">尚未开始</div>
-      <div id="model-control" class="model-control" hidden>
-        <div class="model-control-copy">
-          <div class="section-label">VLLM CONTROL</div>
-          <strong>视觉模型服务</strong>
-          <span id="model-control-status">模型 API 未就绪，可重新启动。</span>
-        </div>
-        <button id="restart-vllm" class="mini-button model-restart" type="button">重启 vLLM</button>
-      </div>
-      <div class="run-plan" aria-label="任务计划">
-        <div class="plan-step" data-plan-step="0"><span class="plan-index">01</span><strong>准备与截取</strong><span>生成分析输入</span></div>
-        <div class="plan-step" data-plan-step="1"><span class="plan-index">02</span><strong id="plan-title-1">ASR + 对齐</strong><span id="plan-copy-1">语音与词级时间戳</span></div>
-        <div class="plan-step" data-plan-step="2"><span class="plan-index">03</span><strong id="plan-title-2">视觉拉片</strong><span id="plan-copy-2">1fps / 20秒 / 5秒</span></div>
-        <div class="plan-step" data-plan-step="3"><span class="plan-index">04</span><strong id="plan-title-3">综合打包</strong><span id="plan-copy-3">四份文档与字幕</span></div>
-      </div>
-      <div class="telemetry-grid">
-        <div class="telemetry-item"><span class="telemetry-label">GPU 利用率</span><strong id="gpu-utilization" class="telemetry-value">--</strong><span id="gpu-utilization-sub" class="telemetry-sub">等待采样</span></div>
-        <div class="telemetry-item"><span class="telemetry-label">显存占用</span><strong id="gpu-memory" class="telemetry-value">--</strong><span id="gpu-memory-sub" class="telemetry-sub">已用 / 总量</span></div>
-        <div class="telemetry-item"><span class="telemetry-label">温度 / 功耗</span><strong id="gpu-thermal" class="telemetry-value">--</strong><span id="gpu-power" class="telemetry-sub">功耗 --</span></div>
-        <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
-        <div class="telemetry-item"><span class="telemetry-label">运行状态</span><strong id="runtime-status" class="telemetry-value">正常</strong><span id="runtime-status-sub" class="telemetry-sub">等待任务</span></div>
-      </div>
-      <div class="log-head"><div><div class="section-label">LIVE LOG</div><strong>运行日志</strong></div><span class="log-live">LIVE</span><span id="log-count" class="log-count">0 行</span></div>
-      <pre id="logs"></pre>
-      <section id="batch-queue-card" class="batch-queue-card" hidden>
-        <div class="batch-queue-head"><strong>批量队列</strong><span id="batch-queue-count">0 / 0</span></div>
-        <p class="batch-queue-copy">等待中的视频可以用 ↑ ↓ 调整顺序；当前正在处理的视频不会被移动。</p>
-        <div id="batch-queue-items" class="batch-queue-items"></div>
-      </section>
-    </section>
-
-    <section id="result-card" class="card" hidden>
-      <div class="result-head"><div><div class="section-label">OUTPUT</div><h2>输出内容</h2></div><span id="output-count" class="output-count">0</span></div>
-      <p>输出目录：</p>
-      <code id="output-dir"></code>
-      <ul id="files"></ul>
-      <p id="error" class="error"></p>
-    </section>
-    <div class="studio-footer"><span>野构 STUDIO · MEDIA ANALYSIS LAB</span><span>MiniCPM-V / Qwen3-ASR / ForcedAligner</span></div>
-    </div>
 
     </div>
   </main>
@@ -1297,6 +1416,8 @@ HTML = """<!doctype html>
     const batchQueueItems = document.getElementById("batch-queue-items");
     const homeView = document.getElementById("home-view");
     const workbenchView = document.getElementById("workbench-view");
+    const modelView = document.getElementById("model-view");
+    const modelPageStatus = document.getElementById("model-page-status");
     const backHome = document.getElementById("back-home");
     const sidebarButtons = Array.from(document.querySelectorAll("[data-sidebar-action]"));
     const entryLabel = document.getElementById("entry-label");
@@ -1457,6 +1578,7 @@ HTML = """<!doctype html>
       setSidebarActive(batchMode ? "batch" : "new");
       homeView.hidden = true;
       workbenchView.hidden = false;
+      modelView.hidden = true;
       if (updateUrl) history.pushState(null, "", "#" + (batchMode ? analysisMode.value + "-batch" : analysisMode.value));
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -1464,6 +1586,7 @@ HTML = """<!doctype html>
     function showHome(updateUrl = true) {
       homeView.hidden = false;
       workbenchView.hidden = true;
+      modelView.hidden = true;
       batchMode = false;
       fileInput.value = "";
       folderInput.value = "";
@@ -1485,9 +1608,19 @@ HTML = """<!doctype html>
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
+    function showModelView(updateUrl = true) {
+      homeView.hidden = true;
+      workbenchView.hidden = true;
+      modelView.hidden = false;
+      setSidebarActive("models");
+      if (updateUrl) history.pushState(null, "", "#models");
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+
     function syncRoute() {
       const mode = window.location.hash.replace("#", "");
-      if (["director", "subtitle", "director-batch", "subtitle-batch"].includes(mode)) enterMode(mode, false);
+      if (mode === "models") showModelView(false);
+      else if (["director", "subtitle", "director-batch", "subtitle-batch"].includes(mode)) enterMode(mode, false);
       else enterMode("director", false);
     }
 
@@ -1519,7 +1652,7 @@ HTML = """<!doctype html>
         if (action === "new") enterMode("director");
         else if (action === "batch") enterMode(analysisMode.value + "-batch");
         else if (action === "output") focusWorkbenchPanel("#result-card");
-        else if (action === "models") focusWorkbenchPanel(".model-card");
+        else if (action === "models") showModelView();
         else if (action === "settings") focusWorkbenchPanel(".release-option");
         if (action !== "batch" && action !== "new") setSidebarActive(action);
       });
@@ -1893,6 +2026,10 @@ HTML = """<!doctype html>
       releaseVramButton.disabled = busy;
       releaseVramButton.textContent = modelState.status === "releasing" ? "释放中…" : "释放显存";
       releaseVramButton.title = modelState.message || "只停止视觉模型容器，WebUI 保持在线";
+      if (modelPageStatus) {
+        const statusLabels = { starting: "启动中", releasing: "释放中", ready: "服务运行", released: "已释放", failed: "异常" };
+        modelPageStatus.textContent = statusLabels[modelState.status] || "待命";
+      }
     }
 
     function scheduleModelStatePoll(delay) {
