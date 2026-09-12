@@ -186,6 +186,23 @@ HTML = """<!doctype html>
     .local-pill, .tag { border: 1px solid #304466; background: #111d34cc; color: #a8b8d4; border-radius: 999px; padding: 9px 13px; font-size: 12px; white-space: nowrap; }
     .local-pill { display: flex; align-items: center; gap: 8px; }
     .local-pill span { width: 7px; height: 7px; border-radius: 50%; background: #47c58a; }
+    #workbench-view { display: flex; flex-direction: column; }
+    #workbench-view[hidden] { display: none; }
+    .workbench-nav { order: 0; }
+    #progress-card { order: 1; display: flex; flex-direction: column; }
+    .studio-grid { order: 2; }
+    #result-card { order: 3; }
+    .pipeline-card { order: 4; }
+    .studio-footer { order: 5; }
+    #progress-card .row { order: 1; }
+    #progress-card .progress-head { order: 2; }
+    #progress-card > progress { order: 3; }
+    #progress-card > #phase { order: 4; }
+    #progress-card > .log-head { order: 5; }
+    #progress-card > #logs { order: 6; }
+    #progress-card > .batch-queue-card { order: 7; }
+    #progress-card > .run-plan { order: 8; }
+    #progress-card > .telemetry-grid { order: 9; }
     .studio-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(270px, .72fr); gap: 16px; align-items: start; }
     .studio-sidebar { display: grid; gap: 16px; position: sticky; top: 18px; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 19px; padding: 24px; margin-bottom: 16px; box-shadow: 0 20px 60px #0000002b, inset 0 1px #ffffff0a; backdrop-filter: blur(16px); }
@@ -306,12 +323,15 @@ HTML = """<!doctype html>
     .batch-job-controls button { width: auto; min-width: 24px; margin: 0; padding: 4px 5px; border: 1px solid #33486e; border-radius: 7px; background: #111f39; color: #9eafd0; font-size: 11px; line-height: 1; box-shadow: none; }
     .batch-job-controls button:hover { border-color: #6f96ff; background: #182c50; color: var(--cyan); box-shadow: none; transform: none; }
     .batch-job-controls button:disabled { background: transparent; color: #4a5b79; cursor: default; }
+    .batch-job-progress { grid-column: 2 / -1; display: block; height: 4px; overflow: hidden; border-radius: 999px; background: #1c2a45; }
+    .batch-job-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4776f7, #62e3ff); transition: width .25s ease; }
     .batch-job-links { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: -3px; }
     .batch-job-links a { color: #8fb1ff; font-size: 10px; }
     .batch-job-item.done { border-color: #73b99c; background: #effaf5; }
     .batch-job-item.done .batch-job-name, .batch-job-item.done .batch-job-status { color: #347b62; }
     .batch-job-item.failed { border-color: #e0a2a2; background: #fff5f5; }
     .batch-job-item.failed .batch-job-name, .batch-job-item.failed .batch-job-status { color: #ae5555; }
+    .batch-job-item.failed .batch-job-progress span { background: #d98787; }
     button { width: 100%; margin-top: 18px; border: 0; border-radius: 11px; padding: 13px 20px; background: linear-gradient(135deg, var(--blue), #5a55e8); color: white; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 18px #3568f233; transition: transform .2s, box-shadow .2s, opacity .2s; }
     button:hover { transform: translateY(-1px); box-shadow: 0 11px 22px #3568f33d; }
     button:disabled { background: #34415c; color: #93a1b9; box-shadow: none; cursor: wait; transform: none; }
@@ -349,9 +369,21 @@ HTML = """<!doctype html>
     .row { display: flex; justify-content: space-between; gap: 18px; align-items: center; }
     .status { padding: 6px 10px; border: 1px solid #3e5d9b; border-radius: 999px; background: #1a2e5b; color: #a8c0ff; font-size: 12px; font-weight: 700; }
     .error { color: #ff9b9b; white-space: pre-wrap; }
-    pre { margin: 14px 0 0; padding: 15px; min-height: 180px; max-height: 420px; overflow: auto; background: #111a2d; color: #dbeafe; border-radius: 12px; font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+    .log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; }
+    .log-head strong { font-size: 15px; }
+    .log-live { display: inline-flex; align-items: center; gap: 6px; color: #62e3ff; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; }
+    .log-live::before { width: 6px; height: 6px; border-radius: 50%; background: #47c58a; box-shadow: 0 0 9px #47c58a; content: ""; }
+    .log-count { padding: 5px 8px; border: 1px solid #304466; border-radius: 999px; color: #91a1bd; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    pre { margin: 8px 0 0; padding: 15px; min-height: 230px; max-height: 520px; overflow: auto; background: #111a2d; color: #dbeafe; border-radius: 12px; font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
     code { display: block; padding: 10px 12px; background: #0d182c; border: 1px solid #243758; border-radius: 8px; overflow-wrap: anywhere; color: #b9c8e2; }
     ul { padding-left: 20px; line-height: 1.9; }
+    #files { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; padding: 0; margin: 12px 0 0; list-style: none; }
+    #files li { min-width: 0; padding: 10px 12px; border: 1px solid #263b60; border-radius: 10px; background: #0e1a30; }
+    #files a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #files a::before { content: "↓  "; color: #47c58a; }
+    .result-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+    .result-head h2 { margin: 0; }
+    .output-count { color: #47c58a; font: 800 20px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
     a { color: var(--blue); text-decoration: none; }
     a:hover { text-decoration: underline; }
     .small { color: var(--muted); font-size: 13px; line-height: 1.6; }
@@ -484,6 +516,8 @@ HTML = """<!doctype html>
     .batch-job-index { color: #7797ad; }
     .batch-job-name { color: #365e75; }
     .batch-job-status { color: #7891a3; }
+    .batch-job-progress { background: #deedf4; }
+    .batch-job-progress span { background: linear-gradient(90deg, #58abd0, #829fdd); }
     .batch-job-links a { color: #3b86b6; }
     button { background: linear-gradient(135deg, #3988c2, #5c9ed0); color: #fff; box-shadow: 0 8px 18px #3988c233; }
     button:hover { box-shadow: 0 11px 22px #3988c23d; }
@@ -505,10 +539,15 @@ HTML = """<!doctype html>
     .telemetry-label { color: #7b96a8; }
     .telemetry-value { color: #26516b; }
     .telemetry-sub, .telemetry-foot { color: #7891a3; }
+    .log-head strong { color: #244b66; }
+    .log-live { color: #3988b5; }
+    .log-count { border-color: #d6e7ef; color: #7891a3; background: #f8fcfe; }
     .status { border-color: #b8d8e8; background: #edf8fc; color: #327baa; }
     .error { color: #c45555; }
     pre { background: #eef7fb; border: 1px solid #d6e8f0; color: #355a72; }
     code { background: #f3f9fc; border-color: #d6e8f0; color: #4c6f84; }
+    #files li { border-color: #d6e7ef; background: #f8fcfe; }
+    .output-count { color: #48a984; }
     a { color: #2e82b3; }
     .live-badge { border-color: #adddca; background: #effaf5; color: #388466; }
     .live-badge::before { background: #52c495; box-shadow: 0 0 9px #52c49588; }
@@ -581,7 +620,7 @@ HTML = """<!doctype html>
           <span class="entry-arrow">→</span>
         </button>
       </div>
-      <p class="home-note">单视频入口支持时间区间；批量入口默认分析每个视频的完整片段，并按队列顺序使用 GPU。</p>
+      <p class="home-note">单片可选区间 · 批量可读文件夹、可排序、整片处理。</p>
     </section>
 
     <div id="workbench-view" hidden>
@@ -616,8 +655,8 @@ HTML = """<!doctype html>
           <div id="batch-empty" class="batch-empty">先选择视频，或读取一个视频文件夹。</div>
         </section>
         <input id="analysis-mode" type="hidden" value="director">
-        <span id="mode-help" class="small" hidden>完整处理视觉、ASR、ForcedAligner，并输出导演拉片资料。</span>
-        <p id="batch-help" class="batch-help" hidden>批量模式默认分析每个视频的完整片段；同一批视频按顺序排队，单个视频失败会自动跳过。</p>
+        <span id="mode-help" class="small" hidden>视觉、ASR、对齐与导演拉片</span>
+        <p id="batch-help" class="batch-help" hidden>整片 · 可排序 · 失败跳过</p>
         <div id="preview-panel" class="preview-panel" hidden>
           <div class="preview-top">
             <div><div class="section-label">VISUAL RANGE</div><h3>可视时间轴</h3></div>
@@ -746,6 +785,7 @@ HTML = """<!doctype html>
         <div class="telemetry-item"><span class="telemetry-label">温度 / 功耗</span><strong id="gpu-thermal" class="telemetry-value">--</strong><span id="gpu-power" class="telemetry-sub">功耗 --</span></div>
         <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
       </div>
+      <div class="log-head"><div><div class="section-label">LIVE LOG</div><strong>运行日志</strong></div><span class="log-live">LIVE</span><span id="log-count" class="log-count">0 行</span></div>
       <pre id="logs"></pre>
       <section id="batch-queue-card" class="batch-queue-card" hidden>
         <div class="batch-queue-head"><strong>批量队列</strong><span id="batch-queue-count">0 / 0</span></div>
@@ -755,7 +795,7 @@ HTML = """<!doctype html>
     </section>
 
     <section id="result-card" class="card" hidden>
-      <h2>输出结果</h2>
+      <div class="result-head"><div><div class="section-label">OUTPUT</div><h2>输出内容</h2></div><span id="output-count" class="output-count">0</span></div>
       <p>输出目录：</p>
       <code id="output-dir"></code>
       <ul id="files"></ul>
@@ -778,6 +818,7 @@ HTML = """<!doctype html>
     const phase = document.getElementById("phase");
     const planSteps = Array.from(document.querySelectorAll("[data-plan-step]"));
     const logs = document.getElementById("logs");
+    const logCount = document.getElementById("log-count");
     const gpuUtilization = document.getElementById("gpu-utilization");
     const gpuUtilizationSub = document.getElementById("gpu-utilization-sub");
     const gpuMemory = document.getElementById("gpu-memory");
@@ -787,6 +828,7 @@ HTML = """<!doctype html>
     const gpuName = document.getElementById("gpu-name");
     const gpuRefresh = document.getElementById("gpu-refresh");
     const outputDir = document.getElementById("output-dir");
+    const outputCount = document.getElementById("output-count");
     const files = document.getElementById("files");
     const errorBox = document.getElementById("error");
     const startSec = document.getElementById("start-sec");
@@ -870,10 +912,10 @@ HTML = """<!doctype html>
         ? (subtitle ? "批量字幕提取工作台 " : "批量导演拉片工作台 ")
         : (subtitle ? "视觉字幕提取工作台 " : "视频导演拉片工作台 ");
       heroHint.textContent = batchMode
-        ? "一次选择多个视频，按顺序排队处理；单个视频报错后会自动跳过。"
+        ? "文件夹 · 排序 · 队列 · 进度"
         : (subtitle
-          ? "让视觉模型读取画面中的对白字幕，输出时间轴供其他项目重新配音。"
-          : "把视频拆成画面、声音和时间线，方便回看、复盘与继续创作。");
+          ? "读取画面字幕，输出可复核时间轴。"
+          : "画面、声音与时间线，一处查看。");
       uploadTitle.textContent = batchMode ? "点击选择多个视频，或把视频拖到这里" : "点击选择，或把视频拖到这里";
       uploadCopy.textContent = batchMode
         ? "可连续添加文件或读取文件夹，整理好顺序后一次提交。"
@@ -894,8 +936,8 @@ HTML = """<!doctype html>
         ? (batchMode ? "批量字幕任务逐个调用 MiniCPM-V，单个失败不会中断队列。" : "字幕模式只调用 MiniCPM-V，不启动 ASR，完成后可释放显存。")
         : (batchMode ? "批量任务按顺序切换 ASR 与视觉模型，避免多个大模型同时占用显存。" : "模型按 ASR → 视觉 → 整理顺序切换，尽量避免多个大模型同时占用显存。");
       modeHelp.textContent = subtitle
-        ? (batchMode ? "批量读取每个视频中的画面字幕，输出各自的 JSON / SRT / VTT。" : "只调用 MiniCPM-V 读取画面字幕，输出 JSON / SRT / VTT，供其他项目重配音。")
-        : (batchMode ? "逐个处理视觉、ASR、ForcedAligner，并为每个视频输出导演拉片资料。" : "完整处理视觉、ASR、ForcedAligner，并输出导演拉片资料。");
+        ? (batchMode ? "逐项读取画面字幕 · 输出 JSON / SRT / VTT" : "画面字幕 · JSON / SRT / VTT")
+        : (batchMode ? "逐项处理视觉、ASR、对齐与导演拉片" : "视觉、ASR、对齐与导演拉片");
       modeHelp.hidden = false;
       startButton.textContent = batchMode ? (subtitle ? "加入批量字幕队列" : "加入批量分析队列") : (subtitle ? "开始提取字幕" : "开始分析");
       if (batchMode) {
@@ -1436,6 +1478,7 @@ HTML = """<!doctype html>
       updatePlan(job, percent);
       updateGpu(job.gpu);
       logs.textContent = (job.logs || []).join("\\n");
+      logCount.textContent = (job.logs || []).length + " 行";
       logs.scrollTop = logs.scrollHeight;
       if (job.output_dir) {
         outputDir.textContent = job.output_dir;
@@ -1450,6 +1493,7 @@ HTML = """<!doctype html>
         li.appendChild(a);
         files.appendChild(li);
       });
+      outputCount.textContent = String((job.files || []).length);
       errorBox.textContent = job.error || "";
       if (job.status === "done" || job.status === "failed") {
         startButton.disabled = false;
@@ -1545,6 +1589,15 @@ HTML = """<!doctype html>
           });
           item.appendChild(controls);
         }
+        const meter = document.createElement("span");
+        meter.className = "batch-job-progress";
+        const meterFill = document.createElement("span");
+        const meterPercent = job.status === "done" || job.status === "failed" || job.status === "cancelled"
+          ? 100
+          : Math.max(0, Math.min(100, Number(job.progress) || 0));
+        meterFill.style.width = meterPercent + "%";
+        meter.appendChild(meterFill);
+        item.appendChild(meter);
         if (job.status === "done" && Array.isArray(job.files) && job.files.length) {
           const links = document.createElement("div");
           links.className = "batch-job-links";
@@ -1568,6 +1621,7 @@ HTML = """<!doctype html>
         if (job.error) logLines.push("   错误：" + job.error);
       });
       logs.textContent = logLines.join("\\n");
+      logCount.textContent = logLines.length + " 行";
       logs.scrollTop = logs.scrollHeight;
       errorBox.textContent = Number(batch.failed) > 0 ? (Number(batch.failed) + " 个视频处理失败，已跳过，其余任务继续执行。") : "";
       if (batch.status === "done" || batch.status === "partial") {
@@ -1617,6 +1671,7 @@ HTML = """<!doctype html>
       resultCard.hidden = true;
       batchQueueCard.hidden = !batchMode;
       logs.textContent = "正在上传视频…";
+      logCount.textContent = "1 行";
       try {
         const body = new FormData();
         const filesToUpload = batchMode ? batchFiles : Array.from(fileInput.files);
