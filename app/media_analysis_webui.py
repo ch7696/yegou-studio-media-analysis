@@ -365,6 +365,7 @@ HTML = """<!doctype html>
     .hero-tools { display: flex; align-items: center; gap: 12px; }
     .hero-actions { display: flex; align-items: center; gap: 9px; }
     .top-action { width: auto; margin: 0; padding: 9px 12px; border: 1px solid #3e5d9b; border-radius: 999px; background: #1a2e5b; color: #b9c9ff; font-size: 12px; font-weight: 700; box-shadow: none; }
+    .top-link { display: inline-flex; align-items: center; text-decoration: none; }
     .top-action:hover { border-color: var(--cyan); background: #21396d; color: var(--cyan); box-shadow: none; transform: none; }
     .top-action:disabled { background: #263653; color: #8293b0; cursor: wait; }
     .hero-stage { position: relative; width: 176px; height: 112px; flex: 0 0 auto; perspective: 700px; }
@@ -1084,6 +1085,7 @@ HTML = """<!doctype html>
         </div>
         <div class="hero-tools">
           <div class="hero-actions">
+            <a class="top-action top-link" href="https://github.com/ch7696/yegou-studio-media-analysis" target="_blank" rel="noopener noreferrer" title="打开野构 Studio GitHub 仓库">代码仓库</a>
             <button id="release-vram" class="top-action" type="button" title="只停止视觉模型容器，WebUI 保持在线">释放显存</button>
             <div class="local-pill"><span></span>本地运行</div>
           </div>
@@ -1298,6 +1300,7 @@ HTML = """<!doctype html>
       </div>
       <div class="telemetry-grid">
         <div class="telemetry-item"><span class="telemetry-label">GPU 利用率</span><strong id="gpu-utilization" class="telemetry-value">--</strong><span id="gpu-utilization-sub" class="telemetry-sub">等待采样</span></div>
+        <div class="telemetry-item"><span class="telemetry-label">显存占用</span><strong id="gpu-memory" class="telemetry-value">--</strong><span id="gpu-memory-sub" class="telemetry-sub">已用 / 总量</span></div>
         <div class="telemetry-item"><span class="telemetry-label">温度 / 功耗</span><strong id="gpu-thermal" class="telemetry-value">--</strong><span id="gpu-power" class="telemetry-sub">功耗 --</span></div>
         <div class="telemetry-item"><span class="telemetry-label">视觉设备</span><strong id="gpu-name" class="telemetry-value">--</strong><span id="gpu-refresh" class="telemetry-sub">状态等待</span></div>
         <div class="telemetry-item"><span class="telemetry-label">运行状态</span><strong id="runtime-status" class="telemetry-value">正常</strong><span id="runtime-status-sub" class="telemetry-sub">等待任务</span></div>
@@ -1464,6 +1467,74 @@ HTML = """<!doctype html>
     let activeBatchId = null;
     let draggedBatchIndex = null;
     let modelPollTimer = null;
+    const TASK_STORAGE_KEY = "yegou-media-analysis:last-task";
+    let activePollKind = null;
+    let activePollId = null;
+    let resumeInFlight = false;
+
+    function persistTrackedTask(kind, id) {
+      if (!kind || !id) return;
+      try {
+        window.localStorage.setItem(
+          TASK_STORAGE_KEY,
+          JSON.stringify({ kind: String(kind), id: String(id), updatedAt: Date.now() }),
+        );
+      } catch (_error) {
+        // 浏览器禁用本地存储时，服务端队列恢复仍然可用。
+      }
+    }
+
+    function readTrackedTask() {
+      try {
+        const raw = window.localStorage.getItem(TASK_STORAGE_KEY);
+        if (!raw) return null;
+        const value = JSON.parse(raw);
+        if (!value || !["job", "batch"].includes(String(value.kind)) || !value.id) return null;
+        return { kind: String(value.kind), id: String(value.id) };
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    function forgetTrackedTask() {
+      try {
+        window.localStorage.removeItem(TASK_STORAGE_KEY);
+      } catch (_error) {
+        // 忽略浏览器存储异常。
+      }
+    }
+
+    function stopTaskPolling() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (batchPollTimer) {
+        clearTimeout(batchPollTimer);
+        batchPollTimer = null;
+      }
+      activePollKind = null;
+      activePollId = null;
+    }
+
+    function startTaskPolling(kind, id) {
+      stopTaskPolling();
+      activePollKind = String(kind);
+      activePollId = String(id);
+      if (activePollKind === "batch") pollBatch(activePollId);
+      else poll(activePollId);
+    }
+
+    function scheduleTaskPolling(kind, id, delay) {
+      if (activePollKind !== String(kind) || activePollId !== String(id)) return;
+      const callback = function() {
+        if (activePollKind !== String(kind) || activePollId !== String(id)) return;
+        if (kind === "batch") pollBatch(id);
+        else poll(id);
+      };
+      if (kind === "batch") batchPollTimer = setTimeout(callback, delay);
+      else timer = setTimeout(callback, delay);
+    }
 
     function updateModePresentation() {
       const subtitle = analysisMode.value === "subtitle";
@@ -1562,14 +1633,7 @@ HTML = """<!doctype html>
         showSelectedFiles();
       }
       activeBatchId = null;
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      if (batchPollTimer) {
-        clearTimeout(batchPollTimer);
-        batchPollTimer = null;
-      }
+      stopTaskPolling();
       progressCard.hidden = false;
       resultCard.hidden = true;
       batchQueueCard.hidden = true;
@@ -1594,14 +1658,7 @@ HTML = """<!doctype html>
       setSidebarActive("new");
       renderBatchFiles();
       resetPreview();
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      if (batchPollTimer) {
-        clearTimeout(batchPollTimer);
-        batchPollTimer = null;
-      }
+      stopTaskPolling();
       heroTitle.firstChild.textContent = "媒体分析工作台 ";
       heroHint.textContent = "选择一个工作入口，把视频整理成可回看、可下载、可继续加工的资料。";
       if (updateUrl) history.pushState(null, "", window.location.pathname + window.location.search);
@@ -2198,6 +2255,7 @@ HTML = """<!doctype html>
     }
 
     function showJob(job) {
+      if (job && job.id) persistTrackedTask("job", job.id);
       progressCard.hidden = false;
       batchQueueCard.hidden = true;
       resultCard.hidden = job.status !== "done" && job.status !== "failed";
@@ -2230,12 +2288,10 @@ HTML = """<!doctype html>
       });
       outputCount.textContent = String((job.files || []).length);
       errorBox.textContent = job.error || "";
-      if (job.status === "done" || job.status === "failed") {
-        startButton.disabled = false;
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
+      const terminal = ["done", "failed", "cancelled"].includes(job.status);
+      startButton.disabled = !terminal;
+      if (terminal) {
+        if (activePollKind === "job" && activePollId === String(job.id)) stopTaskPolling();
       }
     }
 
@@ -2276,6 +2332,7 @@ HTML = """<!doctype html>
 
     function showBatch(batch) {
       activeBatchId = batch.id || activeBatchId;
+      if (activeBatchId) persistTrackedTask("batch", activeBatchId);
       progressCard.hidden = false;
       resultCard.hidden = true;
       batchQueueCard.hidden = false;
@@ -2368,40 +2425,99 @@ HTML = """<!doctype html>
       errorBox.textContent = Number(batch.failed) > 0 ? (Number(batch.failed) + " 个视频处理失败，已跳过，其余任务继续执行。") : "";
       if (batch.status === "done" || batch.status === "partial") {
         startButton.disabled = false;
-        if (batchPollTimer) {
-          clearTimeout(batchPollTimer);
-          batchPollTimer = null;
-        }
+        if (activePollKind === "batch" && activePollId === String(batch.id)) stopTaskPolling();
       }
       if (batchMode && !batchFiles.length) startButton.disabled = true;
     }
 
     async function poll(jobId) {
+      if (activePollKind !== "job" || activePollId !== String(jobId)) return;
       try {
-        const response = await fetch("/api/jobs/" + encodeURIComponent(jobId));
+        const response = await fetch("/api/jobs/" + encodeURIComponent(jobId), { cache: "no-store" });
         const job = await response.json();
+        if (!response.ok) throw new Error(job.error || "读取任务状态失败");
         showJob(job);
-        if (job.status !== "done" && job.status !== "failed") {
-          timer = setTimeout(function() { poll(jobId); }, 1500);
+        if (activePollKind === "job" && !["done", "failed", "cancelled"].includes(job.status)) {
+          scheduleTaskPolling("job", jobId, 1500);
         }
       } catch (error) {
         errorBox.textContent = String(error);
-        timer = setTimeout(function() { poll(jobId); }, 3000);
+        scheduleTaskPolling("job", jobId, 3000);
       }
     }
 
     async function pollBatch(batchId) {
+      if (activePollKind !== "batch" || activePollId !== String(batchId)) return;
       try {
-        const response = await fetch("/api/batches/" + encodeURIComponent(batchId));
+        const response = await fetch("/api/batches/" + encodeURIComponent(batchId), { cache: "no-store" });
         const batch = await response.json();
         if (!response.ok) throw new Error(batch.error || "读取批量任务失败");
         showBatch(batch);
-        if (batch.status !== "done" && batch.status !== "partial") {
-          batchPollTimer = setTimeout(function() { pollBatch(batchId); }, 1500);
+        if (activePollKind === "batch" && batch.status !== "done" && batch.status !== "partial") {
+          scheduleTaskPolling("batch", batchId, 1500);
         }
       } catch (error) {
         errorBox.textContent = String(error);
-        batchPollTimer = setTimeout(function() { pollBatch(batchId); }, 3000);
+        scheduleTaskPolling("batch", batchId, 3000);
+      }
+    }
+
+    function restoreTaskPayload(kind, payload) {
+      const baseMode = payload && payload.mode === "subtitle" ? "subtitle" : "director";
+      const route = kind === "batch" ? baseMode + "-batch" : baseMode;
+      enterMode(route, false);
+      if (kind === "batch") {
+        showBatch(payload);
+        if (payload.status !== "done" && payload.status !== "partial") startTaskPolling("batch", payload.id);
+      } else {
+        showJob(payload);
+        if (!["done", "failed", "cancelled"].includes(payload.status)) startTaskPolling("job", payload.id);
+      }
+    }
+
+    async function fetchTaskPayload(kind, id) {
+      const path = kind === "batch" ? "/api/batches/" : "/api/jobs/";
+      const response = await fetch(path + encodeURIComponent(id), { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "任务不存在");
+      return payload;
+    }
+
+    async function resumeTrackedTask() {
+      if (resumeInFlight) return;
+      resumeInFlight = true;
+      try {
+        const stored = readTrackedTask();
+        if (stored) {
+          try {
+            restoreTaskPayload(stored.kind, await fetchTaskPayload(stored.kind, stored.id));
+            return;
+          } catch (_error) {
+            forgetTrackedTask();
+          }
+        }
+
+        const response = await fetch("/api/queue", { cache: "no-store" });
+        const queueState = await response.json();
+        if (!response.ok) throw new Error(queueState.error || "读取任务队列失败");
+        let candidate = queueState.resume_task || null;
+        if (!candidate && queueState.active_job) {
+          candidate = queueState.active_job.batch_id
+            ? { kind: "batch", id: queueState.active_job.batch_id }
+            : { kind: "job", id: queueState.active_job.id };
+        }
+        if (!candidate && Array.isArray(queueState.queue) && queueState.queue.length) {
+          const first = queueState.queue[0];
+          candidate = first.batch_id
+            ? { kind: "batch", id: first.batch_id }
+            : { kind: "job", id: first.job_id };
+        }
+        if (!candidate || !candidate.id) return;
+        restoreTaskPayload(candidate.kind === "batch" ? "batch" : "job", await fetchTaskPayload(candidate.kind, candidate.id));
+      } catch (_error) {
+        // 首页不可用时不打断新任务入口；下一次刷新或切回页面会再次恢复。
+      } finally {
+        resumeInFlight = false;
       }
     }
 
@@ -2433,10 +2549,10 @@ HTML = """<!doctype html>
           folderInput.value = "";
           renderBatchFiles();
           showBatch(payload);
-          pollBatch(payload.id);
+          startTaskPolling("batch", payload.id);
         } else {
           showJob(payload);
-          poll(payload.id);
+          startTaskPolling("job", payload.id);
         }
       } catch (error) {
         startButton.disabled = false;
@@ -2444,7 +2560,14 @@ HTML = """<!doctype html>
         errorBox.textContent = String(error);
       }
     });
+    window.addEventListener("pageshow", function() {
+      if (!document.hidden) resumeTrackedTask();
+    });
+    document.addEventListener("visibilitychange", function() {
+      if (!document.hidden) resumeTrackedTask();
+    });
     refreshModelState();
+    resumeTrackedTask();
   </script>
 </body>
 </html>
@@ -2739,12 +2862,48 @@ def files_for_output(output: Path, job_id: str) -> list[dict[str, str]]:
 
 
 def files_for_job(job_id: str) -> list[dict[str, str]]:
-    with JOBS_LOCK:
-        job = JOBS.get(job_id)
-        if not job:
-            return []
-        output = Path(job["output_path"])
+    job = _job_from_state(job_id)
+    if not job or not job.get("output_path"):
+        return []
+    output = Path(str(job["output_path"]))
     return files_for_output(output, job_id)
+
+
+def all_job_state_records() -> list[dict]:
+    """Merge in-memory jobs with persisted jobs for refresh/recovery requests."""
+
+    records: dict[str, dict] = {}
+    with JOBS_LOCK:
+        records.update({str(job_id): dict(job) for job_id, job in JOBS.items()})
+    for state_path in JOB_STATE_DIR.glob("*.json"):
+        if state_path.name.startswith("batch_"):
+            continue
+        try:
+            value = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        job_id = str(value.get("id") or state_path.stem)
+        records.setdefault(job_id, value)
+    return sorted(
+        records.values(),
+        key=lambda item: (str(item.get("created_at", "")), str(item.get("id", ""))),
+        reverse=True,
+    )
+
+
+def process_is_alive(value: object) -> bool:
+    try:
+        pid = int(value)
+        if pid <= 0:
+            return False
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def update_progress_from_line(job_id: str, line: str) -> None:
@@ -3281,6 +3440,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
         if disposition:
             self.send_header("Content-Disposition", disposition)
@@ -3289,7 +3449,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, value: dict, status: int = 200) -> None:
         payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
-        self.send_bytes(payload, "application/json; charset=utf-8", status)
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(payload)
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -3313,12 +3479,39 @@ class Handler(BaseHTTPRequestHandler):
                     None,
                 )
                 queued = sum(item.get("status") == "queued" for item in JOBS.values())
+            if active is None:
+                active = next(
+                    (
+                        dict(item)
+                        for item in all_job_state_records()
+                        if item.get("status") == "running" and process_is_alive(item.get("pid"))
+                    ),
+                    None,
+                )
+            if active:
+                active.pop("thread", None)
+            pending = pending_queue_snapshot()
+            resume_task = None
+            if active:
+                batch_id = str(active.get("batch_id", ""))
+                resume_task = {
+                    "kind": "batch" if batch_id else "job",
+                    "id": batch_id or str(active.get("id", "")),
+                }
+            elif pending:
+                first = pending[0]
+                batch_id = str(first.get("batch_id", ""))
+                resume_task = {
+                    "kind": "batch" if batch_id else "job",
+                    "id": batch_id or str(first.get("job_id", "")),
+                }
             self.send_json(
                 {
                     "queue_size": JOB_QUEUE.qsize(),
                     "queued_jobs": queued,
-                    "queue": pending_queue_snapshot(),
+                    "queue": pending,
                     "active_job": active,
+                    "resume_task": resume_task,
                     "gpu": gpu_status(),
                     "model_restart": model_restart_snapshot(),
                 }
@@ -3346,10 +3539,10 @@ class Handler(BaseHTTPRequestHandler):
             if not result:
                 self.send_json({"error": "任务不存在"}, 404)
                 return
-                result["files"] = files_for_job(job_id)
-                result["gpu"] = gpu_status()
-                result["model_restart"] = model_restart_snapshot()
-                result.pop("thread", None)
+            result["files"] = files_for_job(job_id)
+            result["gpu"] = gpu_status()
+            result["model_restart"] = model_restart_snapshot()
+            result.pop("thread", None)
             self.send_json(result)
             return
 

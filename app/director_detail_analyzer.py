@@ -117,6 +117,16 @@ def make_sheet(remote_frames: str, remote_sheet: str, start_sec: float, frame_co
     )
 
 
+def frame_indices_for_interval(start_sec: float, end_sec: float, total_frames: int) -> list[int]:
+    """Return only the 1fps frame indices that actually exist in an interval."""
+
+    first = max(0, int(math.floor(start_sec + 1e-6)))
+    last = min(total_frames, int(math.ceil(end_sec - 1e-9)))
+    if last <= first:
+        return []
+    return list(range(first, last))
+
+
 def analyze(source: Path, output: Path, max_duration: float | None = None) -> None:
     output.mkdir(parents=True, exist_ok=True)
     frames_dir = output / "01_每秒高清帧"
@@ -138,19 +148,6 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
         duration = max(0.5, min(declared, actual or declared))
         if max_duration and max_duration > 0:
             duration = min(duration, max_duration)
-        (output / "测试视频信息.md").write_text(
-            "\n".join(
-                [
-                    f"- 视频：`{source.name}`",
-                    f"- SHA256：`{source_hash}`",
-                    f"- 处理范围：{'前 ' if max_duration and max_duration > 0 else '全片 '}{fmt_time(duration)}",
-                    f"- 画面：{meta.get('video', {}).get('width', '未知')} × {meta.get('video', {}).get('height', '未知')}，原尺寸逐秒 JPEG",
-                    "- 处理方式：每秒一张高清帧；每 20 秒一张联系图；联系图做上下文，高清帧做细节。",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
         run(["docker", "exec", MODEL_CONTAINER, "mkdir", "-p", remote_frames, remote_sheets], timeout=120)
         run(
             [
@@ -176,6 +173,39 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
         )
         docker_cp(f"{MODEL_CONTAINER}:{remote_frames}/.", str(frames_dir))
         frames = sorted(frames_dir.glob("frame_*.jpg"))
+        if not frames:
+            raise RuntimeError("视频没有生成可用的逐秒画面帧")
+        frame_coverage = float(len(frames))
+        requested_duration = duration
+        if frame_coverage < duration - 1e-6:
+            duration = frame_coverage
+            print(
+                f"逐秒帧覆盖到 {fmt_time(frame_coverage)}，安全跳过末尾 "
+                f"{requested_duration - frame_coverage:.2f} 秒的无采样尾段。",
+                flush=True,
+            )
+        (output / "测试视频信息.md").write_text(
+            "\n".join(
+                [
+                    f"- 视频：`{source.name}`",
+                    f"- SHA256：`{source_hash}`",
+                    f"- 容器声明时长：{fmt_time(declared)}",
+                    f"- 可解码时长：{fmt_time(actual or declared)}",
+                    f"- 逐秒帧覆盖：{fmt_time(frame_coverage)}",
+                    f"- 处理范围：{'前 ' if max_duration and max_duration > 0 else '全片 '}{fmt_time(duration)}",
+                    (
+                        f"- 尾段处理：原始可读时长比逐秒帧覆盖多 {requested_duration - frame_coverage:.2f} 秒，"
+                        "该无采样尾段已跳过，未影响前面画面分析。"
+                        if requested_duration > frame_coverage + 1e-6
+                        else "- 尾段处理：逐秒帧覆盖完整。"
+                    ),
+                    f"- 画面：{meta.get('video', {}).get('width', '未知')} × {meta.get('video', {}).get('height', '未知')}，原尺寸逐秒 JPEG",
+                    "- 处理方式：每秒一张高清帧；每 20 秒一张联系图；联系图做上下文，高清帧做细节。",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
         with (frames_dir / "帧索引.md").open("w", encoding="utf-8") as stream:
             for index, frame in enumerate(frames):
                 stream.write(f"- {fmt_time(index)}：`{frame.name}`\n")
@@ -186,7 +216,14 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
         slice_id = 1
         while slice_start < duration - 1e-6:
             slice_end = min(duration, slice_start + 20.0)
-            frame_count = max(1, min(20, math.ceil(slice_end - slice_start - 1e-9)))
+            context_indices = frame_indices_for_interval(slice_start, slice_end, len(frames))
+            if not context_indices:
+                print(
+                    f"跳过 {fmt_time(slice_start)}–{fmt_time(slice_end)}：没有对应的逐秒画面帧。",
+                    flush=True,
+                )
+                break
+            frame_count = len(context_indices)
             context_sheet_remote = f"{remote_sheets}/context_{slice_id:02d}.jpg"
             context_sheet_local = context_dir / f"联系图_{slice_id:02d}_{fmt_time(slice_start).replace(':', '-')}-{fmt_time(slice_end).replace(':', '-')}.jpg"
             make_sheet(remote_frames, context_sheet_remote, slice_start, frame_count, 5, 320, 180)
@@ -211,10 +248,13 @@ def analyze(source: Path, output: Path, max_duration: float | None = None) -> No
             detail_id = 1
             while detail_start < slice_end - 1e-6:
                 detail_end = min(slice_end, detail_start + 5.0)
-                times = [detail_start + i for i in range(max(1, math.ceil(detail_end - detail_start - 1e-9)))]
-                selected = [frames[int(t)] for t in times if int(t) < len(frames)]
+                detail_indices = frame_indices_for_interval(detail_start, detail_end, len(frames))
+                times = [float(index) for index in detail_indices]
+                selected = [frames[index] for index in detail_indices]
                 if not selected:
-                    break
+                    detail_start += 5.0
+                    detail_id += 1
+                    continue
                 detail_file = text_dir / f"细节_{slice_id:02d}_{detail_id:02d}_{fmt_time(detail_start).replace(':', '-')}-{fmt_time(detail_end).replace(':', '-')}.md"
                 fallback_local: Path | None = None
                 try:
